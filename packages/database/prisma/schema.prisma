@@ -1,0 +1,1301 @@
+// =============================================================================
+// SCIENTIA AI — Prisma Schema
+// PostgreSQL + pgvector + pg_trgm
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector"), pg_trgm(map: "pg_trgm")]
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum WorkspaceRoleType {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+  CUSTOM
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum PaperSourceType {
+  OPENALEX
+  CROSSREF
+  SEMANTIC_SCHOLAR
+  PUBMED
+  ARXIV
+  MANUAL
+  UPLOAD
+}
+
+enum PaperStatus {
+  PENDING
+  PROCESSING
+  INGESTED
+  FAILED
+}
+
+enum ChunkSection {
+  ABSTRACT
+  INTRODUCTION
+  METHODS
+  RESULTS
+  DISCUSSION
+  CONCLUSION
+  TABLE
+  FIGURE
+  OTHER
+}
+
+enum IngestionJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ModelProvider {
+  OPENAI
+  ANTHROPIC
+  GOOGLE
+}
+
+enum ModelRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ModelRunTask {
+  SCIENTIFIC_SHEET
+  EVIDENCE_CLASSIFICATION
+  THEORETICAL_FRAMEWORK
+  ASSISTANT_QA
+  METHODOLOGY_CLASSIFICATION
+  TABLE_EXTRACTION
+  HYPOTHESIS_GENERATION
+  PAPER_EXPLANATION
+  EMBEDDING
+}
+
+enum AuditVerdict {
+  FAITHFUL
+  UNFAITHFUL
+  PARTIAL
+}
+
+enum FieldResultStatus {
+  ANSWERED
+  INSUFFICIENT_EVIDENCE
+  CONFLICTING_EVIDENCE
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum EvidenceStrength {
+  STRONG
+  MODERATE
+  WEAK
+  INSUFFICIENT
+  CONFLICTING
+}
+
+enum StudyDesign {
+  RCT
+  COHORT
+  CASE_CONTROL
+  CROSS_SECTIONAL
+  CASE_REPORT
+  SYSTEMATIC_REVIEW
+  META_ANALYSIS
+  OTHER
+}
+
+enum RiskOfBias {
+  LOW
+  MODERATE
+  HIGH
+  UNCLEAR
+}
+
+enum ReviewStageType {
+  IDENTIFICATION
+  SCREENING
+  ELIGIBILITY
+  INCLUDED
+}
+
+enum ReviewItemDecisionType {
+  INCLUDE
+  EXCLUDE
+  MAYBE
+}
+
+enum ReviewStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
+
+enum CollectionVisibility {
+  PRIVATE
+  WORKSPACE
+  PUBLIC
+}
+
+enum KnowledgeGraphNodeType {
+  PAPER
+  AUTHOR
+  CONCEPT
+  INSTITUTION
+  JOURNAL
+}
+
+enum KnowledgeGraphEdgeType {
+  CITES
+  AUTHORED_BY
+  HAS_CONCEPT
+  AFFILIATED_WITH
+  PUBLISHED_IN
+  SIMILAR_TO
+}
+
+enum Map3DAxisMode {
+  SEMANTIC
+  TEMPORAL
+  IMPACT
+  CONFIDENCE
+}
+
+enum ExportJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ExportFormat {
+  PDF
+  DOCX
+  XLSX
+  CSV
+  BIBTEX
+  RIS
+}
+
+enum PlanCode {
+  FREE
+  PRO
+  RESEARCHER_PLUS
+  INSTITUTION
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+  INCOMPLETE
+}
+
+enum PaymentProvider {
+  STRIPE
+  MERCADO_PAGO
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum CreditTransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum NotificationType {
+  SYSTEM
+  BILLING
+  REVIEW
+  EXPORT
+  MENTION
+}
+
+enum UsageEventType {
+  SEARCH
+  AI_RUN
+  EXPORT
+  INGESTION
+}
+
+enum AuditLogAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  EXPORT
+  INVITE
+  ROLE_CHANGE
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum SearchProvider {
+  OPENALEX
+  CROSSREF
+  SEMANTIC_SCHOLAR
+  PUBMED
+  ARXIV
+}
+
+// =============================================================================
+// IDENTIDADE & TENANCY
+// =============================================================================
+
+model User {
+  id          String   @id @default(cuid())
+  clerkId     String   @unique
+  email       String   @unique
+  fullName    String?
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organizations    OrganizationMember[]
+  workspaceMembers WorkspaceMember[]
+  conversations    Conversation[]
+  notes            Note[]
+  highlights       Highlight[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  invitationsSent  Invitation[]         @relation("InvitedBy")
+
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members    OrganizationMember[]
+  workspaces Workspace[]
+  plan       Plan?                 @relation(fields: [planId], references: [id])
+  planId     String?
+  subscription Subscription?
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           WorkspaceRoleType @default(ADMIN)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+model Workspace {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      WorkspaceMember[]
+  roles        WorkspaceRole[]
+  invitations  Invitation[]
+
+  searchQueries     SearchQuery[]
+  ingestionJobs     IngestionJob[]
+  scientificSheets  ScientificSheet[]
+  conversations     Conversation[]
+  evidenceQuestions EvidenceQuestion[]
+  systematicReviews SystematicReview[]
+  collections       Collection[]
+  exportJobs        ExportJob[]
+  creditWallet      CreditWallet?
+  notifications     Notification[]
+  usageEvents       UsageEvent[]
+  usageSummaries    UsageSummary[]
+  auditLogs         AuditLog[]
+  knowledgeGraphNodes KnowledgeGraphNode[]
+  knowledgeGraphEdges KnowledgeGraphEdge[]
+  clusterAssignments  ClusterAssignment[]
+  map3DProjections    Map3DProjection[]
+  modelRuns           ModelRun[]
+
+  @@unique([organizationId, slug])
+  @@map("workspaces")
+}
+
+model WorkspaceRole {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  name            String
+  baseCode        WorkspaceRoleType
+  permissions     Json
+  createdAt       DateTime          @default(now())
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members   WorkspaceMember[]
+
+  @@unique([workspaceId, name])
+  @@map("workspace_roles")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  roleId      String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      WorkspaceRole @relation(fields: [roleId], references: [id])
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model Invitation {
+  id          String           @id @default(cuid())
+  workspaceId String
+  email       String
+  roleId      String
+  status      InvitationStatus @default(PENDING)
+  invitedById String
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy User      @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([workspaceId])
+  @@map("invitations")
+}
+
+// =============================================================================
+// CATÁLOGO DE PAPERS
+// =============================================================================
+
+model Paper {
+  id              String      @id @default(cuid())
+  externalId      String?     @unique
+  source          PaperSourceType
+  title           String
+  abstractText    String?
+  doi             String?     @unique
+  publicationYear Int?
+  venue           String?
+  citationCount   Int         @default(0)
+  openAccessUrl   String?
+  status          PaperStatus @default(PENDING)
+  metadata        Json?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  journalId String?
+  journal   Journal? @relation(fields: [journalId], references: [id])
+
+  authors        PaperAuthor[]
+  concepts       PaperConcept[]
+  chunks         PaperChunk[]
+  files          PaperFile[]
+  tags           PaperTag[]
+  collectionItems CollectionItem[]
+  scientificSheets ScientificSheet[]
+  reviewItems    ReviewItem[]
+  studyAssessments StudyEvidenceAssessment[]
+  notes          Note[]
+  highlights     Highlight[]
+  messageCitations MessageCitation[]
+  knowledgeGraphNode KnowledgeGraphNode?
+
+  @@index([title])
+  @@map("papers")
+}
+
+model Author {
+  id        String   @id @default(cuid())
+  fullName  String
+  orcid     String?  @unique
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  papers       PaperAuthor[]
+  metrics      AuthorMetrics?
+  knowledgeGraphNode KnowledgeGraphNode?
+
+  @@index([fullName])
+  @@map("authors")
+}
+
+model PaperAuthor {
+  id       String  @id @default(cuid())
+  paperId  String
+  authorId String
+  position Int
+  institutionId String?
+
+  paper       Paper        @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  author      Author       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  institution Institution? @relation(fields: [institutionId], references: [id])
+
+  @@unique([paperId, authorId])
+  @@map("paper_authors")
+}
+
+model Institution {
+  id        String   @id @default(cuid())
+  name      String
+  country   String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  paperAuthors PaperAuthor[]
+  knowledgeGraphNode KnowledgeGraphNode?
+
+  @@map("institutions")
+}
+
+model Journal {
+  id        String   @id @default(cuid())
+  name      String
+  issn      String?  @unique
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  papers Paper[]
+  knowledgeGraphNode KnowledgeGraphNode?
+
+  @@map("journals")
+}
+
+model PaperChunk {
+  id        String       @id @default(cuid())
+  paperId   String
+  section   ChunkSection
+  content   String
+  embedding Unsupported("vector(1536)")?
+  position  Int
+  createdAt DateTime     @default(now())
+
+  paper Paper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  groundingRefs    GroundingRef[]
+  messageCitations MessageCitation[]
+
+  @@index([paperId])
+  @@map("paper_chunks")
+}
+
+model PaperFile {
+  id        String   @id @default(cuid())
+  paperId   String
+  storageKey String
+  mimeType  String
+  sizeBytes Int
+  createdAt DateTime @default(now())
+
+  paper Paper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@map("paper_files")
+}
+
+model Concept {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  papers PaperConcept[]
+  knowledgeGraphNode KnowledgeGraphNode?
+
+  @@map("concepts")
+}
+
+model PaperConcept {
+  id        String  @id @default(cuid())
+  paperId   String
+  conceptId String
+  score     Float?
+
+  paper   Paper   @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  concept Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@unique([paperId, conceptId])
+  @@map("paper_concepts")
+}
+
+// =============================================================================
+// BUSCA & INGESTÃO
+// =============================================================================
+
+model SearchQuery {
+  id          String          @id @default(cuid())
+  workspaceId String
+  query       String
+  providers   SearchProvider[]
+  filters     Json?
+  resultCount Int             @default(0)
+  createdAt   DateTime        @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("search_queries")
+}
+
+model IngestionJob {
+  id          String             @id @default(cuid())
+  workspaceId String
+  paperId     String?
+  source      PaperSourceType
+  status      IngestionJobStatus @default(QUEUED)
+  error       String?
+  createdAt   DateTime           @default(now())
+  completedAt DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("ingestion_jobs")
+}
+
+model ExternalSourceRecord {
+  id          String          @id @default(cuid())
+  paperId     String
+  source      PaperSourceType
+  externalId  String
+  rawPayload  Json
+  fetchedAt   DateTime        @default(now())
+
+  @@unique([source, externalId])
+  @@map("external_source_records")
+}
+
+// =============================================================================
+// IA — PROVENIÊNCIA
+// =============================================================================
+
+model PromptLog {
+  id        String   @id @default(cuid())
+  task      ModelRunTask
+  template  String
+  variables Json
+  createdAt DateTime @default(now())
+
+  modelRuns ModelRun[]
+
+  @@map("prompt_logs")
+}
+
+model ModelRun {
+  id           String         @id @default(cuid())
+  workspaceId  String
+  promptLogId  String
+  task         ModelRunTask
+  provider     ModelProvider
+  model        String
+  status       ModelRunStatus @default(PENDING)
+  inputTokens  Int?
+  outputTokens Int?
+  costUsd      Float?
+  latencyMs    Int?
+  output       Json?
+  error        String?
+  createdAt    DateTime       @default(now())
+  completedAt  DateTime?
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  promptLog PromptLog  @relation(fields: [promptLogId], references: [id])
+  audit     ModelRunAudit?
+
+  scientificSheets ScientificSheet[]
+  messages         Message[]
+  evidenceAnswers  EvidenceAnswer[]
+  groundingRefs    GroundingRef[]
+
+  @@index([workspaceId])
+  @@map("model_runs")
+}
+
+model ModelRunAudit {
+  id         String       @id @default(cuid())
+  modelRunId String       @unique
+  verdict    AuditVerdict
+  notes      String?
+  createdAt  DateTime     @default(now())
+
+  modelRun ModelRun @relation(fields: [modelRunId], references: [id], onDelete: Cascade)
+
+  @@map("model_run_audits")
+}
+
+model GroundingRef {
+  id           String  @id @default(cuid())
+  modelRunId   String
+  paperChunkId String
+  marker       String
+  relevance    Float?
+
+  modelRun   ModelRun   @relation(fields: [modelRunId], references: [id], onDelete: Cascade)
+  paperChunk PaperChunk @relation(fields: [paperChunkId], references: [id], onDelete: Cascade)
+
+  @@map("grounding_refs")
+}
+
+// =============================================================================
+// FICHAMENTO CIENTÍFICO
+// =============================================================================
+
+model ScientificSheet {
+  id          String   @id @default(cuid())
+  workspaceId String
+  paperId     String
+  modelRunId  String?
+  objective   Json?
+  methodology Json?
+  results     Json?
+  limitations Json?
+  relevance   Json?
+  status      FieldResultStatus @default(ANSWERED)
+  confidenceScore Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  paper     Paper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  modelRun  ModelRun? @relation(fields: [modelRunId], references: [id])
+
+  @@unique([workspaceId, paperId])
+  @@map("scientific_sheets")
+}
+
+// =============================================================================
+// ASSISTENTE / RAG
+// =============================================================================
+
+model Conversation {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  title       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@index([workspaceId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String
+  modelRunId     String?
+  createdAt      DateTime    @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  modelRun     ModelRun?     @relation(fields: [modelRunId], references: [id])
+  citations    MessageCitation[]
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+model MessageCitation {
+  id           String  @id @default(cuid())
+  messageId    String
+  paperId      String
+  paperChunkId String?
+  marker       String
+
+  message    Message     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  paper      Paper       @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  paperChunk PaperChunk? @relation(fields: [paperChunkId], references: [id])
+
+  @@map("message_citations")
+}
+
+// =============================================================================
+// MOTOR DE EVIDÊNCIAS
+// =============================================================================
+
+model EvidenceQuestion {
+  id          String   @id @default(cuid())
+  workspaceId String
+  question    String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  answers   EvidenceAnswer[]
+
+  @@map("evidence_questions")
+}
+
+model EvidenceAnswer {
+  id                 String            @id @default(cuid())
+  evidenceQuestionId String
+  modelRunId         String?
+  status             FieldResultStatus
+  evidenceStrength   EvidenceStrength?
+  summary            String?
+  confidenceScore    Float?
+  createdAt          DateTime          @default(now())
+
+  evidenceQuestion EvidenceQuestion @relation(fields: [evidenceQuestionId], references: [id], onDelete: Cascade)
+  modelRun         ModelRun?        @relation(fields: [modelRunId], references: [id])
+  studyAssessments StudyEvidenceAssessment[]
+
+  @@map("evidence_answers")
+}
+
+model StudyEvidenceAssessment {
+  id               String      @id @default(cuid())
+  evidenceAnswerId String
+  paperId          String
+  studyDesign      StudyDesign
+  sampleSize       Int?
+  riskOfBias       RiskOfBias?
+  findings         String?
+  weight           Float?
+
+  evidenceAnswer EvidenceAnswer @relation(fields: [evidenceAnswerId], references: [id], onDelete: Cascade)
+  paper          Paper          @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@map("study_evidence_assessments")
+}
+
+// =============================================================================
+// REVISÃO SISTEMÁTICA
+// =============================================================================
+
+model SystematicReview {
+  id          String       @id @default(cuid())
+  workspaceId String
+  title       String
+  protocol    Json?
+  status      ReviewStatus @default(DRAFT)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stages    ReviewStage[]
+  prismaFlow PrismaFlow?
+
+  @@map("systematic_reviews")
+}
+
+model ReviewStage {
+  id        String          @id @default(cuid())
+  reviewId  String
+  type      ReviewStageType
+  order     Int
+
+  review SystematicReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  items  ReviewItem[]
+
+  @@unique([reviewId, type])
+  @@map("review_stages")
+}
+
+model ReviewItem {
+  id        String   @id @default(cuid())
+  stageId   String
+  paperId   String
+  createdAt DateTime @default(now())
+
+  stage     ReviewStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  paper     Paper       @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  decisions ReviewItemDecision[]
+
+  @@unique([stageId, paperId])
+  @@map("review_items")
+}
+
+model ReviewItemDecision {
+  id           String                 @id @default(cuid())
+  reviewItemId String
+  decision     ReviewItemDecisionType
+  reason       String?
+  decidedById  String?
+  createdAt    DateTime               @default(now())
+
+  reviewItem ReviewItem @relation(fields: [reviewItemId], references: [id], onDelete: Cascade)
+
+  @@map("review_item_decisions")
+}
+
+model PrismaFlow {
+  id        String @id @default(cuid())
+  reviewId  String @unique
+  counts    Json
+
+  review SystematicReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("prisma_flows")
+}
+
+// =============================================================================
+// BIBLIOGRAFIA
+// =============================================================================
+
+model Collection {
+  id          String               @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  visibility  CollectionVisibility @default(WORKSPACE)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items     CollectionItem[]
+
+  @@map("collections")
+}
+
+model CollectionItem {
+  id           String   @id @default(cuid())
+  collectionId String
+  paperId      String
+  addedAt      DateTime @default(now())
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  paper      Paper      @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, paperId])
+  @@map("collection_items")
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  paperId   String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  paper Paper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notes")
+}
+
+model Highlight {
+  id        String   @id @default(cuid())
+  paperId   String
+  userId    String
+  text      String
+  location  Json?
+  createdAt DateTime @default(now())
+
+  paper Paper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("highlights")
+}
+
+model Tag {
+  id          String @id @default(cuid())
+  workspaceId String
+  name        String
+
+  papers PaperTag[]
+
+  @@unique([workspaceId, name])
+  @@map("tags")
+}
+
+model PaperTag {
+  id      String @id @default(cuid())
+  paperId String
+  tagId   String
+
+  paper Paper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([paperId, tagId])
+  @@map("paper_tags")
+}
+
+// =============================================================================
+// BIBLIOMETRIA & GRAFO DE CONHECIMENTO
+// =============================================================================
+
+model AuthorMetrics {
+  id        String   @id @default(cuid())
+  authorId  String   @unique
+  hIndex    Int      @default(0)
+  gIndex    Int      @default(0)
+  mIndex    Float    @default(0)
+  updatedAt DateTime @updatedAt
+
+  author Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("author_metrics")
+}
+
+model CoauthorshipEdge {
+  id          String @id @default(cuid())
+  authorAId   String
+  authorBId   String
+  weight      Int    @default(1)
+
+  @@unique([authorAId, authorBId])
+  @@map("coauthorship_edges")
+}
+
+model CocitationEdge {
+  id        String @id @default(cuid())
+  paperAId  String
+  paperBId  String
+  weight    Int    @default(1)
+
+  @@unique([paperAId, paperBId])
+  @@map("cocitation_edges")
+}
+
+model BibliographicCouplingEdge {
+  id        String @id @default(cuid())
+  paperAId  String
+  paperBId  String
+  weight    Int    @default(1)
+
+  @@unique([paperAId, paperBId])
+  @@map("bibliographic_coupling_edges")
+}
+
+model KnowledgeGraphNode {
+  id          String                 @id @default(cuid())
+  workspaceId String
+  type        KnowledgeGraphNodeType
+  label       String
+
+  paperId       String? @unique
+  authorId      String? @unique
+  conceptId     String? @unique
+  institutionId String? @unique
+  journalId     String? @unique
+
+  metadata Json?
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  paper       Paper?       @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  author      Author?      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  concept     Concept?     @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  institution Institution? @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  journal     Journal?     @relation(fields: [journalId], references: [id], onDelete: Cascade)
+
+  outgoingEdges KnowledgeGraphEdge[] @relation("SourceNode")
+  incomingEdges KnowledgeGraphEdge[] @relation("TargetNode")
+
+  @@index([workspaceId])
+  @@map("knowledge_graph_nodes")
+}
+
+model KnowledgeGraphEdge {
+  id          String                 @id @default(cuid())
+  workspaceId String
+  type        KnowledgeGraphEdgeType
+  sourceId    String
+  targetId    String
+  weight      Float                  @default(1)
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  source    KnowledgeGraphNode @relation("SourceNode", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    KnowledgeGraphNode @relation("TargetNode", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, targetId, type])
+  @@index([workspaceId])
+  @@map("knowledge_graph_edges")
+}
+
+model ClusterAssignment {
+  id          String   @id @default(cuid())
+  workspaceId String
+  paperId     String
+  clusterId   Int
+  label       String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("cluster_assignments")
+}
+
+model Map3DProjection {
+  id          String        @id @default(cuid())
+  workspaceId String
+  paperId     String
+  axisMode    Map3DAxisMode
+  x           Float
+  y           Float
+  z           Float
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, paperId, axisMode])
+  @@map("map_3d_projections")
+}
+
+// =============================================================================
+// EXPORTAÇÃO
+// =============================================================================
+
+model ExportTemplate {
+  id        String       @id @default(cuid())
+  name      String
+  format    ExportFormat
+  template  Json
+  createdAt DateTime     @default(now())
+
+  exportJobs ExportJob[]
+
+  @@map("export_templates")
+}
+
+model ExportJob {
+  id          String          @id @default(cuid())
+  workspaceId String
+  templateId  String?
+  format      ExportFormat
+  status      ExportJobStatus @default(QUEUED)
+  resultUrl   String?
+  error       String?
+  createdAt   DateTime        @default(now())
+  completedAt DateTime?
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  template  ExportTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([workspaceId])
+  @@map("export_jobs")
+}
+
+// =============================================================================
+// BILLING & CRÉDITOS
+// =============================================================================
+
+model Plan {
+  id            String   @id @default(cuid())
+  code          PlanCode @unique
+  name          String
+  priceMonthlyUsd Float
+  priceMonthlyBrl Float
+  aiCreditsMonthly Int
+  features      Json
+  createdAt     DateTime @default(now())
+
+  organizations Organization[]
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id             String             @id @default(cuid())
+  organizationId String             @unique
+  planId         String
+  status         SubscriptionStatus @default(TRIALING)
+  currentPeriodEnd DateTime
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan          @relation(fields: [planId], references: [id])
+  payments     Payment[]
+
+  @@map("subscriptions")
+}
+
+model Payment {
+  id              String          @id @default(cuid())
+  subscriptionId  String
+  provider        PaymentProvider
+  providerEventId String          @unique
+  amount          Float
+  currency        String
+  status          PaymentStatus   @default(PENDING)
+  createdAt       DateTime        @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model CreditWallet {
+  id          String   @id @default(cuid())
+  workspaceId String   @unique
+  balance     Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions CreditTransaction[]
+
+  @@map("credit_wallets")
+}
+
+model CreditTransaction {
+  id             String                @id @default(cuid())
+  walletId       String
+  type           CreditTransactionType
+  amount         Int
+  reason         String
+  idempotencyKey String                @unique
+  createdAt      DateTime              @default(now())
+
+  wallet CreditWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("credit_transactions")
+}
+
+model Invoice {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  amount         Float
+  currency       String
+  issuedAt       DateTime @default(now())
+  pdfUrl         String?
+
+  @@map("invoices")
+}
+
+// =============================================================================
+// NOTIFICAÇÕES
+// =============================================================================
+
+model Notification {
+  id          String           @id @default(cuid())
+  workspaceId String
+  userId      String
+  type        NotificationType
+  title       String
+  body        String?
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id     String           @id @default(cuid())
+  userId String
+  type   NotificationType
+  email  Boolean          @default(true)
+  inApp  Boolean          @default(true)
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
+}
+
+// =============================================================================
+// ANALYTICS
+// =============================================================================
+
+model UsageEvent {
+  id          String         @id @default(cuid())
+  workspaceId String
+  type        UsageEventType
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, type])
+  @@map("usage_events")
+}
+
+model UsageSummary {
+  id          String   @id @default(cuid())
+  workspaceId String
+  periodStart DateTime
+  periodEnd   DateTime
+  metrics     Json
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, periodStart, periodEnd])
+  @@map("usage_summaries")
+}
+
+// =============================================================================
+// ADMIN & AUDITORIA
+// =============================================================================
+
+model AuditLog {
+  id          String         @id @default(cuid())
+  workspaceId String?
+  userId      String?
+  action      AuditLogAction
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id])
+
+  @@index([workspaceId])
+  @@map("audit_logs")
+}
+
+model SystemAlert {
+  id        String        @id @default(cuid())
+  severity  AlertSeverity
+  message   String
+  resolved  Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  @@map("system_alerts")
+}
