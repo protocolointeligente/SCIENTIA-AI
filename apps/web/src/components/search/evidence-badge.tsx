@@ -1,8 +1,10 @@
-import { Badge } from '@/components/ui/badge';
+import { Badge, type BadgeProps } from '@/components/ui/badge';
 
 export type EvidenceStrength = 'STRONG' | 'MODERATE' | 'WEAK' | 'INSUFFICIENT' | 'CONFLICTING';
 
-const VARIANT_BY_STRENGTH: Record<EvidenceStrength, string> = {
+type BadgeVariant = NonNullable<BadgeProps['variant']>;
+
+const VARIANT_BY_STRENGTH: Record<EvidenceStrength, BadgeVariant> = {
   STRONG: 'evidenceStrong',
   MODERATE: 'evidenceModerate',
   WEAK: 'evidenceWeak',
@@ -20,7 +22,6 @@ const LABEL_BY_STRENGTH: Record<EvidenceStrength, string> = {
 
 export function EvidenceBadge({ strength }: { strength: EvidenceStrength }) {
   return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    <Badge variant={VARIANT_BY_STRENGTH[strength] as any}>{LABEL_BY_STRENGTH[strength]}</Badge>
+    <Badge variant={VARIANT_BY_STRENGTH[strength]}>{LABEL_BY_STRENGTH[strength]}</Badge>
   );
 }
