@@ -8,7 +8,7 @@ COPY packages/database/package.json ./packages/database/
 COPY apps/api/package.json ./apps/api/
 # Stub web package.json so npm workspaces doesn't fail (we don't build web here)
 COPY apps/web/package.json ./apps/web/
-RUN npm ci --workspace=apps/api --workspace=packages/database --include-workspace-root
+RUN npm ci --workspace=apps/api --workspace=packages/database --include-workspace-root --ignore-scripts
 
 # ── builder ───────────────────────────────────────────────────────────────────
 FROM deps AS builder
