@@ -39,15 +39,16 @@ function buildUserPrompt(
   venue: string | null,
 ): string {
   const isPortuguese = language === FichamentoLanguage.PT;
+  const noAbstract = isPortuguese ? 'Resumo não disponível.' : 'Abstract not available.';
 
   return `${isPortuguese ? 'Título' : 'Title'}: ${title}
 ${isPortuguese ? 'Autores' : 'Authors'}: ${authors || 'N/D'}
 ${isPortuguese ? 'Ano' : 'Year'}: ${year ?? 'N/D'}
 ${isPortuguese ? 'Periódico' : 'Journal'}: ${venue ?? 'N/D'}
-${isPortuguese ? 'Resumo' : 'Abstract'}: ${abstract ?? isPortuguese ? 'Resumo não disponível.' : 'Abstract not available.'}
+${isPortuguese ? 'Resumo' : 'Abstract'}: ${abstract ?? noAbstract}
 
 ${isPortuguese
-  ? `Gere um fichamento científico em JSON com a seguinte estrutura exata:
+    ? `Gere um fichamento científico em JSON com a seguinte estrutura exata:
 {
   "objetivo": "objetivo principal da pesquisa em 2-3 frases",
   "metodologia": "abordagem metodológica utilizada",
@@ -59,12 +60,12 @@ ${isPortuguese
   "evidenceStrength": "STRONG | MODERATE | WEAK | INSUFFICIENT",
   "keywords": ["palavra1", "palavra2", "palavra3"]
 }`
-  : `Generate a scientific summary in JSON with this exact structure:
+    : `Generate a scientific summary in JSON with this exact structure:
 {
   "objetivo": "main research objective in 2-3 sentences",
   "metodologia": "methodological approach used",
   "resultados": "main results found",
-  "conclusoes": "authors' conclusions",
+  "conclusoes": "authors conclusions",
   "limitacoes": "identified limitations (or 'Not mentioned' if absent)",
   "relevancia": "relevance and contribution to the field",
   "citacaoAbnt": "full citation in ABNT format",
@@ -124,16 +125,26 @@ export class FichamentoService {
     let modelUsed: string;
 
     if (openAiKey) {
-      ({ rawJson, modelUsed } = await this.callOpenAI(openAiKey, isPortuguese ? SYSTEM_PROMPT_PT : SYSTEM_PROMPT_EN, userPrompt, dto.customPrompt));
+      ({ rawJson, modelUsed } = await this.callOpenAI(
+        openAiKey,
+        isPortuguese ? SYSTEM_PROMPT_PT : SYSTEM_PROMPT_EN,
+        userPrompt,
+        dto.customPrompt,
+      ));
     } else {
-      ({ rawJson, modelUsed } = await this.callAnthropic(anthropicKey!, isPortuguese ? SYSTEM_PROMPT_PT : SYSTEM_PROMPT_EN, userPrompt, dto.customPrompt));
+      ({ rawJson, modelUsed } = await this.callAnthropic(
+        anthropicKey!,
+        isPortuguese ? SYSTEM_PROMPT_PT : SYSTEM_PROMPT_EN,
+        userPrompt,
+        dto.customPrompt,
+      ));
     }
 
     // 3. Parse AI response
     const parsed = this.parseAiResponse(rawJson);
 
-    // 4. Persist as ScientificSheet (FieldResult records)
-    await this.persistFichamento(paper.id, workspaceId, userId, parsed, modelUsed);
+    // 4. Persist as ScientificSheet (upsert with JSON fields)
+    await this.persistFichamento(paper.id, workspaceId, parsed, modelUsed);
 
     return {
       paperId: paper.id,
@@ -155,7 +166,12 @@ export class FichamentoService {
     };
   }
 
-  private async callOpenAI(apiKey: string, system: string, user: string, customPrompt?: string): Promise<{ rawJson: string; modelUsed: string }> {
+  private async callOpenAI(
+    apiKey: string,
+    system: string,
+    user: string,
+    customPrompt?: string,
+  ): Promise<{ rawJson: string; modelUsed: string }> {
     const model = 'gpt-4o-mini';
     const messages = [
       { role: 'system', content: system },
@@ -164,17 +180,8 @@ export class FichamentoService {
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        response_format: { type: 'json_object' },
-        temperature: 0.3,
-        max_tokens: 2000,
-      }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, messages, response_format: { type: 'json_object' }, temperature: 0.3, max_tokens: 2000 }),
     });
 
     if (!response.ok) {
@@ -186,25 +193,21 @@ export class FichamentoService {
     return { rawJson: data.choices[0]?.message?.content ?? '{}', modelUsed: model };
   }
 
-  private async callAnthropic(apiKey: string, system: string, user: string, customPrompt?: string): Promise<{ rawJson: string; modelUsed: string }> {
+  private async callAnthropic(
+    apiKey: string,
+    system: string,
+    user: string,
+    customPrompt?: string,
+  ): Promise<{ rawJson: string; modelUsed: string }> {
     const model = 'claude-3-5-haiku-20241022';
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model,
         system,
-        messages: [
-          {
-            role: 'user',
-            content: customPrompt ? `${user}\n\nInstruções adicionais: ${customPrompt}` : user,
-          },
-        ],
+        messages: [{ role: 'user', content: customPrompt ? `${user}\n\nInstruções adicionais: ${customPrompt}` : user }],
         max_tokens: 2000,
         temperature: 0.3,
       }),
@@ -217,7 +220,6 @@ export class FichamentoService {
 
     const data = await response.json() as { content: { type: string; text: string }[] };
     const text = data.content.find((b) => b.type === 'text')?.text ?? '{}';
-    // Extract JSON from response (Anthropic doesn't have json_object mode)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     return { rawJson: jsonMatch?.[0] ?? '{}', modelUsed: model };
   }
@@ -236,9 +238,10 @@ export class FichamentoService {
     try {
       const obj = JSON.parse(rawJson) as Record<string, unknown>;
       const validStrengths = ['STRONG', 'MODERATE', 'WEAK', 'INSUFFICIENT', 'CONFLICTING'];
-      const strength = typeof obj.evidenceStrength === 'string' && validStrengths.includes(obj.evidenceStrength)
-        ? (obj.evidenceStrength as 'STRONG' | 'MODERATE' | 'WEAK' | 'INSUFFICIENT' | 'CONFLICTING')
-        : 'MODERATE';
+      const strength =
+        typeof obj.evidenceStrength === 'string' && validStrengths.includes(obj.evidenceStrength)
+          ? (obj.evidenceStrength as 'STRONG' | 'MODERATE' | 'WEAK' | 'INSUFFICIENT' | 'CONFLICTING')
+          : 'MODERATE';
 
       return {
         objetivo: String(obj.objetivo ?? 'Não informado'),
@@ -260,47 +263,44 @@ export class FichamentoService {
   private async persistFichamento(
     paperId: string,
     workspaceId: string,
-    userId: string,
     parsed: ReturnType<FichamentoService['parseAiResponse']>,
     modelUsed: string,
   ) {
-    // Create or update the ScientificSheet
-    const sheet = await this.prisma.scientificSheet.upsert({
-      where: { paperId_workspaceId: { paperId, workspaceId } },
-      create: { paperId, workspaceId, createdById: userId },
-      update: { updatedAt: new Date() },
+    // ScientificSheet stores sections as JSON fields directly
+    const sections = {
+      objetivo: parsed.objetivo,
+      metodologia: parsed.metodologia,
+      resultados: parsed.resultados,
+      conclusoes: parsed.conclusoes,
+      limitacoes: parsed.limitacoes,
+      relevancia: parsed.relevancia,
+      citacaoAbnt: parsed.citacaoAbnt,
+      evidenceStrength: parsed.evidenceStrength,
+      keywords: parsed.keywords,
+      modelUsed,
+    };
+
+    await this.prisma.scientificSheet.upsert({
+      where: { workspaceId_paperId: { workspaceId, paperId } },
+      create: {
+        paperId,
+        workspaceId,
+        objective: sections as any,
+        methodology: { text: parsed.metodologia } as any,
+        results: { text: parsed.resultados } as any,
+        limitations: { text: parsed.limitacoes } as any,
+        relevance: { text: parsed.relevancia, citacao: parsed.citacaoAbnt, keywords: parsed.keywords, evidenceStrength: parsed.evidenceStrength, modelUsed } as any,
+        confidenceScore: parsed.evidenceStrength === 'STRONG' ? 0.9 : parsed.evidenceStrength === 'MODERATE' ? 0.7 : 0.5,
+      },
+      update: {
+        objective: sections as any,
+        methodology: { text: parsed.metodologia } as any,
+        results: { text: parsed.resultados } as any,
+        limitations: { text: parsed.limitacoes } as any,
+        relevance: { text: parsed.relevancia, citacao: parsed.citacaoAbnt, keywords: parsed.keywords, evidenceStrength: parsed.evidenceStrength, modelUsed } as any,
+        confidenceScore: parsed.evidenceStrength === 'STRONG' ? 0.9 : parsed.evidenceStrength === 'MODERATE' ? 0.7 : 0.5,
+        updatedAt: new Date(),
+      },
     });
-
-    const fields: { fieldName: string; value: string }[] = [
-      { fieldName: 'objetivo', value: parsed.objetivo },
-      { fieldName: 'metodologia', value: parsed.metodologia },
-      { fieldName: 'resultados', value: parsed.resultados },
-      { fieldName: 'conclusoes', value: parsed.conclusoes },
-      { fieldName: 'limitacoes', value: parsed.limitacoes },
-      { fieldName: 'relevancia', value: parsed.relevancia },
-      { fieldName: 'citacaoAbnt', value: parsed.citacaoAbnt },
-      { fieldName: 'keywords', value: JSON.stringify(parsed.keywords) },
-      { fieldName: 'evidenceStrength', value: parsed.evidenceStrength },
-    ];
-
-    await Promise.all(
-      fields.map((f) =>
-        this.prisma.fieldResult.upsert({
-          where: { sheetId_fieldName: { sheetId: sheet.id, fieldName: f.fieldName } },
-          create: {
-            sheetId: sheet.id,
-            fieldName: f.fieldName,
-            value: f.value,
-            modelUsed,
-            status: 'COMPLETED',
-          },
-          update: {
-            value: f.value,
-            modelUsed,
-            status: 'COMPLETED',
-          },
-        }),
-      ),
-    );
   }
 }

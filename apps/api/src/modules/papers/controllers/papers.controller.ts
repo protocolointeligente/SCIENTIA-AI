@@ -32,8 +32,7 @@ export class PapersController {
     @CurrentWorkspace() workspace: { workspaceId: string },
   ) {
     const sheet = await this.prisma.scientificSheet.findUnique({
-      where: { paperId_workspaceId: { paperId: id, workspaceId: workspace.workspaceId } },
-      include: { fields: true },
+      where: { workspaceId_paperId: { workspaceId: workspace.workspaceId, paperId: id } },
     });
     return sheet;
   }

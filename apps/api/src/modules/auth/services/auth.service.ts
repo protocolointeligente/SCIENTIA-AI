@@ -20,9 +20,9 @@ export class AuthService {
         fullName: true,
         avatarUrl: true,
         createdAt: true,
-        organizationMembers: {
+        organizations: {
           select: {
-            role: true,
+            role: { select: { name: true } },
             organization: { select: { id: true, name: true, slug: true } },
           },
         },
