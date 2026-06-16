@@ -1,17 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, ClipboardList, CheckCircle2, Clock, Circle, ChevronRight, Users } from 'lucide-react';
+import {
+  Plus, ClipboardList, CheckCircle2, Clock, Circle, ChevronRight,
+  Users, X, ArrowLeft, FileText, Filter, Check,
+} from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
-const REVIEWS = [
+const PROTOCOLS = ['PRISMA', 'PROSPERO', 'Cochrane', 'MOOSE'];
+
+const INIT_REVIEWS = [
   {
     id: '1',
     title: 'Efeitos do treinamento resistido no emagrecimento feminino',
     status: 'em_andamento',
     protocol: 'PRISMA',
+    question: 'O treinamento resistido reduz a gordura corporal em mulheres adultas?',
     papers: { total: 342, screened: 198, included: 47 },
     collaborators: 3,
     updatedAt: '2026-06-14',
@@ -21,6 +27,7 @@ const REVIEWS = [
     title: 'Suplementação proteica e hipertrofia muscular: meta-análise',
     status: 'triagem',
     protocol: 'PRISMA',
+    question: 'A suplementação proteica melhora a hipertrofia muscular em treinos de força?',
     papers: { total: 189, screened: 89, included: 0 },
     collaborators: 1,
     updatedAt: '2026-06-10',
@@ -30,6 +37,7 @@ const REVIEWS = [
     title: 'Jejum intermitente e composição corporal',
     status: 'concluida',
     protocol: 'PRISMA',
+    question: 'O jejum intermitente altera a composição corporal comparado à restrição calórica?',
     papers: { total: 267, screened: 267, included: 38 },
     collaborators: 2,
     updatedAt: '2026-05-28',
@@ -51,8 +59,136 @@ function ProgressBar({ value, max, color = 'bg-primary' }: { value: number; max:
   );
 }
 
+type Review = typeof INIT_REVIEWS[0];
+
+function ReviewDetail({ review, onBack }: { review: Review; onBack: () => void }) {
+  const status = STATUS_MAP[review.status];
+  const { Icon } = status;
+  const screened_pct = Math.round((review.papers.screened / review.papers.total) * 100);
+  const included_pct = Math.round((review.papers.included / review.papers.total) * 100);
+
+  const PRISMA_STAGES = [
+    { label: 'Identificação', desc: 'Registros encontrados nas bases', count: review.papers.total, color: 'bg-violet-500' },
+    { label: 'Triagem', desc: 'Títulos e resumos avaliados', count: review.papers.screened, color: 'bg-amber-500' },
+    { label: 'Elegibilidade', desc: 'Textos completos avaliados', count: Math.round(review.papers.screened * 0.6), color: 'bg-blue-500' },
+    { label: 'Inclusão', desc: 'Estudos incluídos', count: review.papers.included, color: 'bg-green-500' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start gap-3">
+        <button onClick={onBack} className="mt-1 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge className={`border text-xs ${status.color}`}>
+              <Icon className="mr-1 h-3 w-3" />
+              {status.label}
+            </Badge>
+            <Badge variant="outline" className="text-xs">{review.protocol}</Badge>
+          </div>
+          <h1 className="mt-2 text-xl font-semibold leading-snug">{review.title}</h1>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border p-4 space-y-1">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pergunta de pesquisa</p>
+        <p className="text-sm">{review.question}</p>
+      </div>
+
+      {/* PRISMA funnel */}
+      <div>
+        <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+          <Filter className="h-3.5 w-3.5" />
+          Funil PRISMA
+        </h2>
+        <div className="space-y-2">
+          {PRISMA_STAGES.map((stage, i) => (
+            <div key={i} className="rounded-xl border border-border p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-sm font-medium">{stage.label}</p>
+                  <p className="text-xs text-muted-foreground">{stage.desc}</p>
+                </div>
+                <span className="text-2xl font-bold text-foreground">{stage.count}</span>
+              </div>
+              <ProgressBar value={stage.count} max={review.papers.total} color={stage.color} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Progress summary */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { label: 'Triagem concluída', value: `${screened_pct}%`, color: 'text-amber-400' },
+          { label: 'Taxa de inclusão', value: `${included_pct}%`, color: 'text-green-400' },
+          { label: 'Colaboradores', value: review.collaborators, color: 'text-blue-400' },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl border border-border p-4">
+            <p className="text-xs text-muted-foreground">{s.label}</p>
+            <p className={`mt-1 text-2xl font-semibold ${s.color}`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        <Button size="sm" className="gap-1">
+          <FileText className="h-3.5 w-3.5" />
+          Exportar relatório PRISMA
+        </Button>
+        <Button size="sm" variant="outline" className="gap-1">
+          <Users className="h-3.5 w-3.5" />
+          Convidar colaborador
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function ReviewsPage() {
-  const [creating, setCreating] = useState(false);
+  const [reviews, setReviews] = useState(INIT_REVIEWS);
+  const [selected, setSelected] = useState<Review | null>(null);
+  const [showNew, setShowNew] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newQuestion, setNewQuestion] = useState('');
+  const [newProtocol, setNewProtocol] = useState('PRISMA');
+  const [saved, setSaved] = useState(false);
+
+  const createReview = () => {
+    if (!newTitle.trim()) return;
+    const id = Date.now().toString();
+    setReviews((prev) => [
+      {
+        id,
+        title: newTitle.trim(),
+        status: 'triagem',
+        protocol: newProtocol,
+        question: newQuestion.trim() || 'Pergunta de pesquisa a definir',
+        papers: { total: 0, screened: 0, included: 0 },
+        collaborators: 1,
+        updatedAt: new Date().toISOString().split('T')[0],
+      },
+      ...prev,
+    ]);
+    setSaved(true);
+    setTimeout(() => {
+      setShowNew(false);
+      setNewTitle('');
+      setNewQuestion('');
+      setNewProtocol('PRISMA');
+      setSaved(false);
+    }, 900);
+  };
+
+  if (selected) {
+    return (
+      <AppShell>
+        <ReviewDetail review={selected} onBack={() => setSelected(null)} />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -64,7 +200,7 @@ export default function ReviewsPage() {
               Triagem PRISMA assistida por IA, com fluxo de identificação, elegibilidade e inclusão.
             </p>
           </div>
-          <Button size="sm" className="gap-1" onClick={() => setCreating(true)}>
+          <Button size="sm" className="gap-1" onClick={() => setShowNew(true)}>
             <Plus className="h-4 w-4" />
             Nova revisão
           </Button>
@@ -73,9 +209,9 @@ export default function ReviewsPage() {
         {/* Stats */}
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            { label: 'Revisões ativas', value: 2, color: 'text-blue-400' },
-            { label: 'Papers triados', value: '554', color: 'text-amber-400' },
-            { label: 'Incluídos', value: 85, color: 'text-green-400' },
+            { label: 'Revisões ativas', value: reviews.filter((r) => r.status !== 'concluida').length, color: 'text-blue-400' },
+            { label: 'Papers triados', value: reviews.reduce((a, r) => a + r.papers.screened, 0), color: 'text-amber-400' },
+            { label: 'Incluídos', value: reviews.reduce((a, r) => a + r.papers.included, 0), color: 'text-green-400' },
           ].map((s) => (
             <div key={s.label} className="rounded-xl border border-border p-4">
               <p className="text-sm text-muted-foreground">{s.label}</p>
@@ -84,16 +220,74 @@ export default function ReviewsPage() {
           ))}
         </div>
 
+        {/* New review form */}
+        {showNew && (
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="font-medium flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-primary" />
+                Nova revisão sistemática
+              </p>
+              <button onClick={() => setShowNew(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Título *</label>
+                <input
+                  autoFocus
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="Ex: Efeito do exercício aeróbico na pressão arterial..."
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary/50"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Pergunta de pesquisa (PICO)</label>
+                <input
+                  value={newQuestion}
+                  onChange={(e) => setNewQuestion(e.target.value)}
+                  placeholder="Ex: O exercício aeróbico reduz a pressão arterial em adultos hipertensos?"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary/50"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Protocolo</label>
+                <div className="flex gap-2 flex-wrap">
+                  {PROTOCOLS.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setNewProtocol(p)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                        newProtocol === p ? 'border-primary/50 bg-primary/10 text-foreground' : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={createReview} disabled={!newTitle.trim() || saved} className="gap-1">
+                {saved ? <><Check className="h-3.5 w-3.5" /> Criado!</> : 'Criar revisão'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
+            </div>
+          </div>
+        )}
+
         {/* Review list */}
         <div className="space-y-3">
-          {REVIEWS.map((review) => {
+          {reviews.map((review) => {
             const status = STATUS_MAP[review.status];
             const { Icon } = status;
-
             return (
-              <div
+              <button
                 key={review.id}
-                className="group cursor-pointer rounded-xl border border-border p-5 hover:border-primary/40 hover:bg-accent/20 transition-all"
+                onClick={() => setSelected(review)}
+                className="group w-full cursor-pointer rounded-xl border border-border p-5 text-left hover:border-primary/40 hover:bg-accent/20 transition-all"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -105,17 +299,15 @@ export default function ReviewsPage() {
                       <Badge variant="outline" className="text-xs">{review.protocol}</Badge>
                     </div>
                     <h3 className="mt-2 font-medium leading-snug">{review.title}</h3>
-
                     <div className="mt-4 grid gap-2">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>Identificados: <span className="text-foreground font-medium">{review.papers.total}</span></span>
                         <span>Triados: <span className="text-amber-400 font-medium">{review.papers.screened}</span></span>
                         <span>Incluídos: <span className="text-green-400 font-medium">{review.papers.included}</span></span>
                       </div>
-                      <ProgressBar value={review.papers.screened} max={review.papers.total} color="bg-amber-500" />
-                      <ProgressBar value={review.papers.included} max={review.papers.total} color="bg-green-500" />
+                      <ProgressBar value={review.papers.screened} max={review.papers.total || 1} color="bg-amber-500" />
+                      <ProgressBar value={review.papers.included} max={review.papers.total || 1} color="bg-green-500" />
                     </div>
-
                     <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Users className="h-3 w-3" />
@@ -126,23 +318,10 @@ export default function ReviewsPage() {
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1 group-hover:text-foreground transition-colors" />
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
-
-        {creating && (
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-6 text-center">
-            <ClipboardList className="mx-auto mb-3 h-8 w-8 text-primary/60" />
-            <p className="font-medium">Criar nova revisão sistemática</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Use a Pesquisa para identificar artigos e adicione-os a uma revisão.
-            </p>
-            <Button size="sm" variant="outline" className="mt-3" onClick={() => setCreating(false)}>
-              Cancelar
-            </Button>
-          </div>
-        )}
       </div>
     </AppShell>
   );

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles, BookOpen, Lightbulb } from 'lucide-react';
+import { Send, Bot, User, Sparkles, BookOpen, Lightbulb, Key, Settings } from 'lucide-react';
+import Link from 'next/link';
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,51 +17,107 @@ interface Message {
 const SUGGESTIONS = [
   'Quais são as principais evidências sobre treinamento de força para emagrecimento?',
   'Compare os estudos de jejum intermitente vs restrição calórica contínua',
-  'Quais papers têm maior nível de evidência na minha biblioteca?',
-  'Resuma os achados sobre suplementação proteica pós-treino',
+  'Quais papers têm maior nível de evidência sobre suplementação proteica?',
+  'Explique o protocolo PRISMA para revisões sistemáticas',
 ];
 
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: '0',
-    role: 'assistant',
-    content:
-      'Olá! Sou o assistente científico da SCIENTIA AI. Posso responder perguntas sobre os artigos da sua biblioteca, comparar estudos, identificar lacunas de pesquisa e ajudar a construir argumentos baseados em evidências. Como posso ajudar?',
-  },
-];
+const INITIAL_MESSAGE: Message = {
+  id: '0',
+  role: 'assistant',
+  content:
+    'Olá! Sou o assistente científico da SCIENTIA AI. Posso ajudar com perguntas sobre pesquisa científica, metodologia, análise de evidências e muito mais. Como posso ajudar?',
+};
+
+function MessageBubble({ msg }: { msg: Message }) {
+  const isUser = msg.role === 'user';
+  return (
+    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isUser ? 'bg-white/10' : 'bg-primary/20'}`}>
+        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4 text-primary" />}
+      </div>
+      <div className={`max-w-[80%] flex flex-col gap-2 ${isUser ? 'items-end' : 'items-start'}`}>
+        <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+          isUser ? 'bg-primary text-primary-foreground' : 'bg-white/5 border border-border'
+        }`}>
+          {msg.content}
+        </div>
+        {msg.sources && msg.sources.length > 0 && (
+          <div className="space-y-1">
+            {msg.sources.map((s, i) => (
+              <div key={i} className="flex items-center gap-1.5 rounded-lg border border-border bg-white/3 px-3 py-1.5 text-xs">
+                <BookOpen className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground">{s.authors} ({s.year}) — {s.title}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AssistantPage() {
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [hasKey, setHasKey] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const key = localStorage.getItem('scientia_gemini_key') ?? '';
+    setHasKey(key.length > 10);
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     if (!text.trim() || loading) return;
+
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text };
-    setMessages((prev) => [...prev, userMsg]);
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
     setInput('');
     setLoading(true);
 
-    // Simula resposta do assistente (será substituído por chamada real à API)
-    setTimeout(() => {
+    try {
+      const apiKey = localStorage.getItem('scientia_gemini_key') ?? '';
+      const history = messages
+        .filter((m) => m.id !== '0') // exclude initial greeting
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history, apiKey }),
+      });
+
+      const data = await res.json() as { reply: string; error?: string };
+
       const reply: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content:
-          'Com base nos 128 artigos da sua biblioteca, encontrei evidências relevantes sobre este tópico. Os estudos de maior qualidade metodológica sugerem efeitos consistentes, especialmente em ensaios clínicos randomizados. Conecte a chave de API de IA nas configurações para respostas completas e rastreáveis.',
-        sources: [
-          { title: 'Effects of resistance training on fat mass', authors: 'Silva et al.', year: 2023 },
-          { title: 'Protein intake and muscle hypertrophy', authors: 'Johnson et al.', year: 2022 },
-        ],
+        content: data.reply,
       };
       setMessages((prev) => [...prev, reply]);
+
+      // If key worked, mark as having key
+      if (!data.error || data.error === '') {
+        setHasKey(true);
+      }
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: 'Não consegui conectar ao servidor. Verifique sua conexão e tente novamente.',
+        },
+      ]);
+    } finally {
       setLoading(false);
-    }, 1400);
+    }
   };
 
   return (
@@ -68,47 +125,41 @@ export default function AssistantPage() {
       <div className="flex h-[calc(100vh-4rem)] flex-col">
         {/* Header */}
         <div className="shrink-0 border-b border-border px-6 py-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-semibold">Assistente científico</h1>
             <Badge variant="secondary" className="gap-1 text-xs">
               <Sparkles className="h-3 w-3" />
-              IA + sua biblioteca
+              {hasKey ? 'Gemini 1.5 Flash' : 'IA'}
             </Badge>
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Respostas com grounding nos artigos da sua biblioteca e citações rastreáveis.
+            Respostas baseadas em evidências científicas e nos artigos da sua biblioteca.
           </p>
         </div>
+
+        {/* No key banner */}
+        {!hasKey && (
+          <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/5 px-6 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-amber-400">
+              <Key className="h-4 w-4 shrink-0" />
+              <span>
+                Configure sua chave do <strong>Google Gemini</strong> para ativar respostas de IA.{' '}
+                <span className="text-amber-300">É gratuita — 1.500 req/dia sem cartão de crédito.</span>
+              </span>
+            </div>
+            <Link href="/settings">
+              <Button size="sm" variant="outline" className="gap-1 shrink-0 text-xs border-amber-500/40 text-amber-400 hover:bg-amber-500/10">
+                <Settings className="h-3.5 w-3.5" />
+                Configurar
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {messages.map((msg) => (
-            <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${msg.role === 'assistant' ? 'bg-primary/20' : 'bg-white/10'}`}>
-                {msg.role === 'assistant' ? (
-                  <Bot className="h-4 w-4 text-primary" />
-                ) : (
-                  <User className="h-4 w-4" />
-                )}
-              </div>
-              <div className={`max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'} flex flex-col gap-2`}>
-                <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'assistant' ? 'bg-white/5 border border-border' : 'bg-primary text-primary-foreground'}`}>
-                  {msg.content}
-                </div>
-                {msg.sources && msg.sources.length > 0 && (
-                  <div className="space-y-1">
-                    {msg.sources.map((s, i) => (
-                      <div key={i} className="flex items-center gap-1.5 rounded-lg border border-border bg-white/3 px-3 py-1.5 text-xs">
-                        <BookOpen className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="text-muted-foreground">
-                          {s.authors} ({s.year}) — {s.title}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <MessageBubble key={msg.id} msg={msg} />
           ))}
 
           {loading && (
@@ -124,7 +175,7 @@ export default function AssistantPage() {
             </div>
           )}
 
-          {/* Suggestions (only on first message) */}
+          {/* Suggestions */}
           {messages.length === 1 && !loading && (
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -157,7 +208,7 @@ export default function AssistantPage() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Pergunte sobre seus artigos..."
+              placeholder={hasKey ? 'Pergunte sobre pesquisa científica...' : 'Digite sua pergunta (configure a chave para respostas IA)...'}
               className="flex-1 rounded-xl border border-input bg-background px-4 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary/50"
             />
             <Button type="submit" size="sm" disabled={!input.trim() || loading} className="gap-1">
@@ -165,6 +216,19 @@ export default function AssistantPage() {
               Enviar
             </Button>
           </form>
+          {!hasKey && (
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              Sem chave: respostas simuladas. Com chave Gemini: IA real, gratuita.{' '}
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary hover:underline"
+              >
+                Obter chave gratuita →
+              </a>
+            </p>
+          )}
         </div>
       </div>
     </AppShell>
