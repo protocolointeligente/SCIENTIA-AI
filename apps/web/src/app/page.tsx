@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Search, FileText, BarChart3, Brain, BookOpen, Network,
   Check, X, ChevronRight, Star, Users, Building2, GraduationCap,
-  Shield, Zap, Globe, Lock, ArrowRight, Menu, ExternalLink
+  Shield, Zap, Globe, Lock, ArrowRight, Menu
 } from 'lucide-react';
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -748,7 +748,7 @@ function Testimonials() {
                   <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
                 ))}
               </div>
-              <p className="mb-4 text-slate-300 leading-relaxed">"{t.text}"</p>
+              <p className="mb-4 text-slate-300 leading-relaxed">&ldquo;{t.text}&rdquo;</p>
               <div>
                 <div className="font-semibold text-white">{t.name}</div>
                 <div className="text-sm text-slate-500">{t.role}</div>
