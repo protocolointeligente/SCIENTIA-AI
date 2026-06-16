@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Search, Library, Sparkles, Settings } from 'lucide-react';
+import { LayoutDashboard, Search, Library, Sparkles, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { href: '/search', label: 'Pesquisa', icon: Search },
   { href: '/library', label: 'Biblioteca', icon: Library },
   { href: '/assistant', label: 'Assistente', icon: Sparkles },
-  { href: '/settings', label: 'Ajustes', icon: Settings },
+  { href: '/guide', label: 'Guia', icon: BookOpen },
 ] as const;
 
 export function BottomNav() {

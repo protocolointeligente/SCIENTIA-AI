@@ -11,6 +11,7 @@ import {
   Boxes,
   Sparkles,
   Settings,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { href: '/bibliometrics', label: 'Bibliometria', icon: Network },
   { href: '/graph', label: 'Grafo', icon: Boxes },
   { href: '/assistant', label: 'Assistente', icon: Sparkles },
+  { href: '/guide', label: 'Guia de uso', icon: BookOpen },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ] as const;
 
