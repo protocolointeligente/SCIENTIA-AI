@@ -37,7 +37,8 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isAuthRoute = pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up');
-  const isPublicRoute = pathname === '/' || isAuthRoute;
+  const isApiRoute = pathname.startsWith('/api/');
+  const isPublicRoute = pathname === '/' || isAuthRoute || isApiRoute;
 
   // Redirect unauthenticated users to sign-in (except public routes)
   if (!user && !isPublicRoute) {
