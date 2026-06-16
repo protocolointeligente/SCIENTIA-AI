@@ -22,7 +22,6 @@ export class AuthService {
         createdAt: true,
         organizations: {
           select: {
-            role: { select: { name: true } },
             organization: { select: { id: true, name: true, slug: true } },
           },
         },
