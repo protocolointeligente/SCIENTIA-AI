@@ -1,13 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Plus, ClipboardList, CheckCircle2, Clock, Circle, ChevronRight,
   Users, X, ArrowLeft, FileText, Filter, Check, Download, Mail,
+  Sparkles,
 } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { loadReviews, type ReviewProject } from '@/lib/review/types';
 
 const PROTOCOLS = ['PRISMA', 'PROSPERO', 'Cochrane', 'MOOSE'];
 const STORAGE_KEY = 'scientia_reviews';
@@ -320,7 +323,9 @@ function ReviewDetail({ review, onBack, onUpdateReview }: {
 
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function ReviewsPage() {
+  const router = useRouter();
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [v2Reviews, setV2Reviews] = useState<ReviewProject[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [selected, setSelected] = useState<Review | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -341,6 +346,8 @@ export default function ReviewsPage() {
     } catch {
       setReviews(INIT_REVIEWS);
     }
+    // Also load v2 reviews (created from search flow)
+    setV2Reviews(loadReviews());
     setHydrated(true);
   }, []);
 
@@ -427,9 +434,21 @@ export default function ReviewsPage() {
         {/* Stats */}
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            { label: 'Revisões ativas', value: reviews.filter((r) => r.status !== 'concluida').length, color: 'text-blue-400' },
-            { label: 'Papers triados', value: reviews.reduce((a, r) => a + r.papers.screened, 0), color: 'text-amber-400' },
-            { label: 'Incluídos', value: reviews.reduce((a, r) => a + r.papers.included, 0), color: 'text-green-400' },
+            {
+              label: 'Revisões ativas',
+              value: reviews.filter((r) => r.status !== 'concluida').length + v2Reviews.filter((r) => r.status !== 'concluida').length,
+              color: 'text-blue-400'
+            },
+            {
+              label: 'Estudos importados',
+              value: reviews.reduce((a, r) => a + r.papers.screened, 0) + v2Reviews.reduce((a, r) => a + r.studies.length, 0),
+              color: 'text-amber-400'
+            },
+            {
+              label: 'Incluídos',
+              value: reviews.reduce((a, r) => a + r.papers.included, 0) + v2Reviews.reduce((a, r) => a + r.papers.included, 0),
+              color: 'text-green-400'
+            },
           ].map((s) => (
             <div key={s.label} className="rounded-xl border border-border p-4">
               <p className="text-sm text-muted-foreground">{s.label}</p>
@@ -496,12 +515,70 @@ export default function ReviewsPage() {
           </div>
         )}
 
-        {/* Review list */}
+        {/* V2 reviews (from search import flow) */}
+        {v2Reviews.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              Revisões científicas ({v2Reviews.length})
+            </h2>
+            {v2Reviews.map((r) => {
+              const status = STATUS_MAP[r.status] ?? STATUS_MAP['triagem'];
+              const { Icon } = status;
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => router.push(`/reviews/${r.id}`)}
+                  className="group w-full cursor-pointer rounded-xl border border-border p-5 text-left hover:border-primary/40 hover:bg-accent/20 transition-all"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge className={`border text-xs ${status.color}`}>
+                          <Icon className="mr-1 h-3 w-3" />
+                          {status.label}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">{r.framework}</Badge>
+                        <Badge variant="outline" className={`text-xs ${r.mode === 'auto' ? 'text-violet-400 border-violet-500/30 bg-violet-500/5' : ''}`}>
+                          {r.mode === 'auto' ? '✦ IA automática' : 'Manual'}
+                        </Badge>
+                      </div>
+                      <h3 className="mt-2 font-medium leading-snug">{r.title}</h3>
+                      <p className="mt-1 text-xs text-muted-foreground line-clamp-1">{r.question}</p>
+                      <div className="mt-3 grid gap-2">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Estudos: <span className="text-foreground font-medium">{r.studies.length}</span></span>
+                          <span>Triados: <span className="text-amber-400 font-medium">{r.papers.screened}</span></span>
+                          <span>Incluídos: <span className="text-green-400 font-medium">{r.papers.included}</span></span>
+                        </div>
+                        <ProgressBar value={r.papers.screened} max={r.studies.length || 1} color="bg-amber-500" />
+                      </div>
+                      <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>Atualizado em {r.updatedAt}</span>
+                        {r.aiProcessing.status === 'done' && (
+                          <span className="text-green-400">✓ IA concluída</span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1 group-hover:text-foreground transition-colors" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Legacy review list */}
         <div className="space-y-3">
-          {reviews.length === 0 && (
+          {v2Reviews.length === 0 && reviews.length === 0 && (
             <div className="rounded-xl border border-border p-8 text-center text-muted-foreground text-sm">
               Nenhuma revisão criada ainda. Clique em <strong>Nova revisão</strong> para começar.
             </div>
+          )}
+          {v2Reviews.length > 0 && reviews.length > 0 && (
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Revisões manuais (legado)
+            </h2>
           )}
           {reviews.map((review) => {
             const status = STATUS_MAP[review.status];

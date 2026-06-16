@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { ExternalLink, Quote, X, Check, BookMarked, FolderOpen } from 'lucide-react';
+import { ExternalLink, Quote, X, Check, BookMarked, FolderOpen, Star, FlaskConical } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import type { QualityScoreBreakdown, StudyType } from '@/lib/review/types';
+import { scoreBadge } from '@/lib/search/quality-score';
 
 export interface ArticleResult {
   id: string;
@@ -14,6 +16,10 @@ export interface ArticleResult {
   citationCount: number;
   abstractText: string | null;
   openAccessUrl: string | null;
+  doi?: string;
+  // Quality score (optional — present when shown in scored list)
+  scores?: QualityScoreBreakdown;
+  studyType?: StudyType;
 }
 
 const COLLECTIONS = [
@@ -23,7 +29,9 @@ const COLLECTIONS = [
   { id: '4', name: 'Saúde Mental', color: 'bg-amber-500' },
 ];
 
-function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+function Modal({ open, onClose, title, children }: {
+  open: boolean; onClose: () => void; title: string; children: React.ReactNode;
+}) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -41,15 +49,38 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
   );
 }
 
-export function ArticleResultCard({ article }: { article: ArticleResult }) {
+// ── Score mini-bar ───────────────────────────────────────────
+function ScoreBar({ value, label, color }: { value: number; label: string; color: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-24 shrink-0 text-muted-foreground">{label}</span>
+      <div className="flex-1 h-1 rounded-full bg-white/10">
+        <div className={`h-1 rounded-full ${color}`} style={{ width: `${Math.round(value * 100)}%` }} />
+      </div>
+      <span className="w-8 text-right text-muted-foreground">{Math.round(value * 100)}</span>
+    </div>
+  );
+}
+
+interface ArticleResultCardProps {
+  article: ArticleResult;
+  // selection mode props (passed from search-results when in select mode)
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
+}
+
+export function ArticleResultCard({
+  article,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+}: ArticleResultCardProps) {
   const [fichaOpen, setFichaOpen] = useState(false);
   const [colOpen, setColOpen] = useState(false);
+  const [scoreOpen, setScoreOpen] = useState(false);
   const [fichaFields, setFichaFields] = useState({
-    objetivo: '',
-    metodo: '',
-    resultados: '',
-    conclusao: '',
-    notas: '',
+    objetivo: '', metodo: '', resultados: '', conclusao: '', notas: '',
   });
   const [fichaSaved, setFichaSaved] = useState(false);
   const [savedCollection, setSavedCollection] = useState<string | null>(null);
@@ -64,11 +95,33 @@ export function ArticleResultCard({ article }: { article: ArticleResult }) {
     setTimeout(() => { setColOpen(false); }, 1000);
   };
 
+  const badge = article.scores ? scoreBadge(article.scores.final) : null;
+
   return (
     <>
       {/* Card */}
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 hover:border-primary/30 transition-colors">
-        <div>
+      <div
+        className={`relative flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors ${
+          selected
+            ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+            : 'border-border hover:border-primary/30'
+        }`}
+      >
+        {/* Checkbox overlay (selectable mode) */}
+        {selectable && (
+          <button
+            onClick={() => onToggleSelect?.(article.id)}
+            className={`absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded border transition-all ${
+              selected
+                ? 'border-primary bg-primary text-white'
+                : 'border-border bg-background hover:border-primary/50'
+            }`}
+          >
+            {selected && <Check className="h-3 w-3" />}
+          </button>
+        )}
+
+        <div className={selectable ? 'pr-7' : ''}>
           <h3 className="text-sm font-semibold leading-snug">{article.title}</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             {article.authors.slice(0, 3).join(', ')}
@@ -77,32 +130,89 @@ export function ArticleResultCard({ article }: { article: ArticleResult }) {
             {article.venue ? ` · ${article.venue}` : ''}
           </p>
         </div>
+
         {article.abstractText && (
-          <p className="line-clamp-3 text-xs text-muted-foreground leading-relaxed">{article.abstractText}</p>
+          <p className="line-clamp-3 text-xs text-muted-foreground leading-relaxed">
+            {article.abstractText}
+          </p>
         )}
+
+        {/* Badges row */}
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="secondary" className="gap-1 text-xs">
             <Quote className="h-3 w-3" />
             {article.citationCount} citações
           </Badge>
-          {article.openAccessUrl && (
-            <Badge variant="outline" className="text-xs text-green-400 border-green-500/30">Acesso aberto</Badge>
+
+          {article.studyType && article.studyType !== 'Unknown' && (
+            <Badge variant="outline" className="text-xs gap-1">
+              <FlaskConical className="h-3 w-3" />
+              {article.studyType}
+            </Badge>
           )}
+
+          {article.openAccessUrl && (
+            <Badge variant="outline" className="text-xs text-green-400 border-green-500/30 bg-green-500/5">
+              Acesso aberto
+            </Badge>
+          )}
+
           {savedCollection && (
             <Badge variant="outline" className="text-xs text-violet-400 border-violet-500/30 gap-1">
               <Check className="h-2.5 w-2.5" /> {savedCollection}
             </Badge>
           )}
+
+          {/* Quality score badge */}
+          {badge && (
+            <button
+              onClick={() => setScoreOpen(!scoreOpen)}
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${badge.color}`}
+            >
+              <Star className="h-3 w-3" />
+              Score {article.scores!.final}
+              <span className="opacity-60">({badge.label})</span>
+            </button>
+          )}
         </div>
-        <div className="flex gap-2 pt-0.5">
-          <Button size="sm" className="h-7 text-xs px-3" onClick={() => setFichaOpen(true)}>
-            <BookMarked className="h-3 w-3 mr-1" />
-            Gerar ficha
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs px-3" onClick={() => setColOpen(true)}>
-            <FolderOpen className="h-3 w-3 mr-1" />
-            {savedCollection ? 'Mover coleção' : 'Adicionar à coleção'}
-          </Button>
+
+        {/* Score breakdown (expandable) */}
+        {scoreOpen && article.scores && (
+          <div className="rounded-lg border border-border bg-background/50 p-3 space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Breakdown do score de qualidade</p>
+            <ScoreBar value={article.scores.semantic}        label="Relevância"    color="bg-violet-500" />
+            <ScoreBar value={article.scores.methodological}  label="Metodologia"   color="bg-blue-500"   />
+            <ScoreBar value={article.scores.studyTypeWeight} label="Tipo estudo"   color="bg-green-500"  />
+            <ScoreBar value={article.scores.impact}          label="Impacto"       color="bg-amber-500"  />
+            <ScoreBar value={article.scores.recency}         label="Recência"      color="bg-pink-500"   />
+            <ScoreBar value={article.scores.completeness}    label="Completude"    color="bg-cyan-500"   />
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-0.5 flex-wrap">
+          {!selectable && (
+            <>
+              <Button size="sm" className="h-7 text-xs px-3" onClick={() => setFichaOpen(true)}>
+                <BookMarked className="h-3 w-3 mr-1" />
+                Gerar ficha
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs px-3" onClick={() => setColOpen(true)}>
+                <FolderOpen className="h-3 w-3 mr-1" />
+                {savedCollection ? 'Mover coleção' : 'Adicionar à coleção'}
+              </Button>
+            </>
+          )}
+          {selectable && (
+            <Button
+              size="sm"
+              variant={selected ? 'default' : 'outline'}
+              className="h-7 text-xs px-3"
+              onClick={() => onToggleSelect?.(article.id)}
+            >
+              {selected ? <><Check className="h-3 w-3 mr-1" />Selecionado</> : 'Selecionar'}
+            </Button>
+          )}
           {article.openAccessUrl && (
             <Button size="sm" variant="ghost" className="h-7 text-xs px-2 ml-auto" asChild>
               <a href={article.openAccessUrl} target="_blank" rel="noreferrer">
@@ -123,11 +233,11 @@ export function ArticleResultCard({ article }: { article: ArticleResult }) {
             </p>
           </div>
           {[
-            { key: 'objetivo', label: 'Objetivo do estudo', placeholder: 'O que os autores investigaram?' },
-            { key: 'metodo', label: 'Método', placeholder: 'Tipo de estudo, amostra, intervenção...' },
-            { key: 'resultados', label: 'Resultados principais', placeholder: 'Principais achados...' },
-            { key: 'conclusao', label: 'Conclusão', placeholder: 'O que concluíram?' },
-            { key: 'notas', label: 'Notas pessoais', placeholder: 'Suas anotações...' },
+            { key: 'objetivo',    label: 'Objetivo do estudo',    placeholder: 'O que os autores investigaram?' },
+            { key: 'metodo',      label: 'Método',                placeholder: 'Tipo de estudo, amostra, intervenção...' },
+            { key: 'resultados',  label: 'Resultados principais', placeholder: 'Principais achados...' },
+            { key: 'conclusao',   label: 'Conclusão',             placeholder: 'O que concluíram?' },
+            { key: 'notas',       label: 'Notas pessoais',        placeholder: 'Suas anotações...' },
           ].map(({ key, label, placeholder }) => (
             <div key={key}>
               <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
