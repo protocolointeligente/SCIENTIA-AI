@@ -10,7 +10,10 @@ generator client {
 
 datasource db {
   provider   = "postgresql"
+  // DATABASE_URL      → pooled (pgbouncer) URL, used at runtime
+  // DIRECT_URL        → non-pooled URL, used by `prisma migrate` and schema introspection
   url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
   extensions = [pgvector(map: "vector"), pg_trgm(map: "pg_trgm")]
 }
 
