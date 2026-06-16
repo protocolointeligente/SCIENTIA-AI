@@ -270,15 +270,52 @@ function ExtractionCard({ extraction: ex }: { extraction: StudyExtraction }) {
   );
 }
 
+// ── Reference format picker ──────────────────────────────────
+const REF_FORMATS = ['ABNT', 'APA', 'Vancouver'] as const;
+type RefFormat = typeof REF_FORMATS[number];
+
+function RefFormatPicker({
+  value,
+  onChange,
+}: {
+  value: RefFormat;
+  onChange: (v: RefFormat) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground">Formato de referências:</span>
+      <div className="flex rounded-lg border border-border overflow-hidden">
+        {REF_FORMATS.map((f) => (
+          <button
+            key={f}
+            onClick={() => onChange(f)}
+            className={`px-3 py-1 text-xs font-medium transition-colors ${
+              value === f
+                ? 'bg-primary text-white'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Sub-component: Synthesis tab ─────────────────────────────
 function SynthesisTab({
   review,
   onStartAI,
   processing,
+  referenceFormat,
+  onChangeFormat,
 }: {
   review: ReviewProject;
-  onStartAI: () => void;
+  onStartAI: (fmt: RefFormat) => void;
   processing: boolean;
+  referenceFormat: RefFormat;
+  onChangeFormat: (v: RefFormat) => void;
 }) {
   const { aiProcessing } = review;
 
@@ -311,7 +348,11 @@ function SynthesisTab({
             <span key={f} className="rounded-full border border-border px-3 py-1">{f}</span>
           ))}
         </div>
-        <Button className="mt-6 gap-2" onClick={onStartAI} disabled={processing}>
+        {/* Reference format picker */}
+        <div className="mt-5 flex justify-center">
+          <RefFormatPicker value={referenceFormat} onChange={onChangeFormat} />
+        </div>
+        <Button className="mt-4 gap-2" onClick={() => onStartAI(referenceFormat)} disabled={processing}>
           {processing ? (
             <><Loader2 className="h-4 w-4 animate-spin" />Iniciando…</>
           ) : (
@@ -356,10 +397,13 @@ function SynthesisTab({
           <p className="font-medium">Erro no processamento</p>
         </div>
         <p className="text-sm text-muted-foreground">{aiProcessing.error}</p>
-        <Button variant="outline" className="gap-2" onClick={onStartAI} disabled={processing}>
-          <RefreshCw className="h-4 w-4" />
-          Tentar novamente
-        </Button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <RefFormatPicker value={referenceFormat} onChange={onChangeFormat} />
+          <Button variant="outline" className="gap-2" onClick={() => onStartAI(referenceFormat)} disabled={processing}>
+            <RefreshCw className="h-4 w-4" />
+            Tentar novamente
+          </Button>
+        </div>
       </div>
     );
   }
@@ -367,17 +411,18 @@ function SynthesisTab({
   // Done
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-sm font-semibold flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
           Síntese gerada por IA
         </h3>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <RefFormatPicker value={referenceFormat} onChange={onChangeFormat} />
           <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
             onClick={() => copyText(aiProcessing.synthesis ?? '')}>
             <Copy className="h-3 w-3" />Copiar
           </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={onStartAI} disabled={processing}>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onStartAI(referenceFormat)} disabled={processing}>
             <RefreshCw className="h-3 w-3" />Regenerar
           </Button>
         </div>
@@ -402,10 +447,14 @@ function ArticleTab({
   review,
   onStartAI,
   processing,
+  referenceFormat,
+  onChangeFormat,
 }: {
   review: ReviewProject;
-  onStartAI: () => void;
+  onStartAI: (fmt: RefFormat) => void;
   processing: boolean;
+  referenceFormat: RefFormat;
+  onChangeFormat: (v: RefFormat) => void;
 }) {
   const { aiProcessing } = review;
   const draft = aiProcessing.draft;
@@ -431,7 +480,7 @@ function ArticleTab({
         <FileText className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
         <p className="text-sm text-muted-foreground">O artigo será gerado após o processamento com IA.</p>
         {aiProcessing.status !== 'processing' && (
-          <Button className="mt-4 gap-2" onClick={onStartAI} disabled={processing}>
+          <Button className="mt-4 gap-2" onClick={() => onStartAI(referenceFormat)} disabled={processing}>
             <Sparkles className="h-4 w-4" />Iniciar IA
           </Button>
         )}
@@ -486,7 +535,7 @@ function ArticleTab({
             onClick={() => downloadText(fullText, `revisao_${review.id}.md`)}>
             <Download className="h-3 w-3" />Download .md
           </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={onStartAI} disabled={processing}>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onStartAI(referenceFormat)} disabled={processing}>
             <RefreshCw className="h-3 w-3" />Regenerar
           </Button>
         </div>
@@ -607,10 +656,11 @@ export default function ReviewDetailPage({
   const { id } = use(params);
   const router  = useRouter();
 
-  const [review, setReview]     = useState<ReviewProject | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('studies');
+  const [review, setReview]       = useState<ReviewProject | null>(null);
+  const [activeTab, setActiveTab]   = useState<Tab>('studies');
   const [processing, setProcessing] = useState(false);
-  const [notFound, setNotFound] = useState(false);
+  const [notFound, setNotFound]     = useState(false);
+  const [referenceFormat, setReferenceFormat] = useState<'ABNT' | 'APA' | 'Vancouver'>('ABNT');
 
   // Load review from localStorage
   useEffect(() => {
@@ -630,7 +680,7 @@ export default function ReviewDetailPage({
   }, [id]);
 
   // ── AI processing ──────────────────────────────────────────
-  const startAI = useCallback(async () => {
+  const startAI = useCallback(async (fmt: 'ABNT' | 'APA' | 'Vancouver' = referenceFormat) => {
     if (!review) return;
     setProcessing(true);
 
@@ -686,6 +736,7 @@ export default function ReviewDetailPage({
           framework: review.framework,
           title:    review.title,
           apiKey,
+          referenceFormat: fmt ?? referenceFormat,
         }),
       });
 
@@ -749,7 +800,7 @@ export default function ReviewDetailPage({
     } finally {
       setProcessing(false);
     }
-  }, [review]);
+  }, [review, referenceFormat]);
 
   // ─────────────────────────────────────────────────────────
   if (notFound) {
@@ -868,10 +919,22 @@ export default function ReviewDetailPage({
           {activeTab === 'screening'  && review.mode === 'manual' && <ScreeningTab review={review} />}
           {activeTab === 'extraction' && <ExtractionTab review={review} />}
           {activeTab === 'synthesis'  && (
-            <SynthesisTab review={review} onStartAI={startAI} processing={processing} />
+            <SynthesisTab
+              review={review}
+              onStartAI={startAI}
+              processing={processing}
+              referenceFormat={referenceFormat}
+              onChangeFormat={setReferenceFormat}
+            />
           )}
           {activeTab === 'article'    && (
-            <ArticleTab review={review} onStartAI={startAI} processing={processing} />
+            <ArticleTab
+              review={review}
+              onStartAI={startAI}
+              processing={processing}
+              referenceFormat={referenceFormat}
+              onChangeFormat={setReferenceFormat}
+            />
           )}
           {activeTab === 'references' && <ReferencesTab review={review} />}
         </div>
