@@ -71,10 +71,10 @@ const ACTIVE_REVIEWS = [
 ];
 
 const QUICK_ACTIONS = [
-  { href: '/search', icon: Search, label: 'Nova busca', colorText: 'text-violet-400', colorBg: 'bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/20' },
-  { href: '/reviews', icon: ClipboardList, label: 'Nova revisão', colorText: 'text-amber-400', colorBg: 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/20' },
-  { href: '/assistant', icon: Sparkles, label: 'Perguntar à IA', colorText: 'text-cyan-400', colorBg: 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/20' },
-  { href: '/guide', icon: BookOpen, label: 'Guia de uso', colorText: 'text-blue-400', colorBg: 'bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/20' },
+  { href: '/search' as const, icon: Search, label: 'Nova busca', colorText: 'text-violet-400', colorBg: 'bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/20' },
+  { href: '/reviews' as const, icon: ClipboardList, label: 'Nova revisão', colorText: 'text-amber-400', colorBg: 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/20' },
+  { href: '/assistant' as const, icon: Sparkles, label: 'Perguntar à IA', colorText: 'text-cyan-400', colorBg: 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/20' },
+  { href: '/guide' as const, icon: BookOpen, label: 'Guia de uso', colorText: 'text-blue-400', colorBg: 'bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/20' },
 ];
 
 export default function DashboardPage() {
