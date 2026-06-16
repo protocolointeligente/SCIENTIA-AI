@@ -1,8 +1,14 @@
 import { Module } from '@nestjs/common';
+import { PapersController } from './controllers/papers.controller';
+import { FichamentoService } from './services/fichamento.service';
 
 /**
- * Paper detail, ingestion pipeline and scientific sheets.
- * Scaffold stub — to be implemented per docs/ai-layer.md.
+ * PapersModule — paper catalog, fichamento (scientific sheet) generation.
+ * AI providers tried in order: OpenAI (gpt-4o-mini) → Anthropic (claude-3-5-haiku).
  */
-@Module({})
+@Module({
+  controllers: [PapersController],
+  providers: [FichamentoService],
+  exports: [FichamentoService],
+})
 export class PapersModule {}
