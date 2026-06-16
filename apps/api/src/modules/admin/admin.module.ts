@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
+import { AdminSeedController } from './controllers/admin-seed.controller';
 
-/**
- * Institutional administration (org-wide settings, member management).
- * Scaffold stub.
- */
-@Module({})
+@Module({
+  controllers: [AdminSeedController],
+})
 export class AdminModule {}
