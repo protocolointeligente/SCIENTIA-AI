@@ -2,7 +2,7 @@
  * POST /api/review-ai
  *
  * Receives selected studies + review metadata.
- * Uses Gemini 2.0 Flash to:
+ * Uses Gemini 1.5 Flash to:
  *   1. Extract structured info from each study (abstract-based)
  *   2. Build extraction matrix
  *   3. Generate synthesis paragraph
@@ -25,7 +25,7 @@ export const maxDuration = 60;
 
 // ── Gemini helper ────────────────────────────────────────────
 async function callGemini(prompt: string, apiKey: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

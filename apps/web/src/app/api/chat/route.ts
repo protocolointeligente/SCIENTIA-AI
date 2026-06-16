@@ -49,8 +49,8 @@ Quando citar estudos, indique autor e ano. Seja conciso mas completo.`;
       },
     };
 
-    // Try gemini-2.0-flash first (newer), fallback model name used by the API
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+    // gemini-1.5-flash has generous free-tier quota; 2.0-flash requires paid plan
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
 
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
