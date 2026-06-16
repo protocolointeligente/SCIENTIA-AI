@@ -1,15 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus, ClipboardList, CheckCircle2, Clock, Circle, ChevronRight,
-  Users, X, ArrowLeft, FileText, Filter, Check,
+  Users, X, ArrowLeft, FileText, Filter, Check, Download, Mail,
 } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 const PROTOCOLS = ['PRISMA', 'PROSPERO', 'Cochrane', 'MOOSE'];
+const STORAGE_KEY = 'scientia_reviews';
 
 const INIT_REVIEWS = [
   {
@@ -19,7 +20,7 @@ const INIT_REVIEWS = [
     protocol: 'PRISMA',
     question: 'O treinamento resistido reduz a gordura corporal em mulheres adultas?',
     papers: { total: 342, screened: 198, included: 47 },
-    collaborators: 3,
+    collaborators: ['ana.silva@pesquisa.br'],
     updatedAt: '2026-06-14',
   },
   {
@@ -29,7 +30,7 @@ const INIT_REVIEWS = [
     protocol: 'PRISMA',
     question: 'A suplementação proteica melhora a hipertrofia muscular em treinos de força?',
     papers: { total: 189, screened: 89, included: 0 },
-    collaborators: 1,
+    collaborators: [],
     updatedAt: '2026-06-10',
   },
   {
@@ -39,7 +40,7 @@ const INIT_REVIEWS = [
     protocol: 'PRISMA',
     question: 'O jejum intermitente altera a composição corporal comparado à restrição calórica?',
     papers: { total: 267, screened: 267, included: 38 },
-    collaborators: 2,
+    collaborators: ['carlos@lab.edu'],
     updatedAt: '2026-05-28',
   },
 ];
@@ -61,11 +62,137 @@ function ProgressBar({ value, max, color = 'bg-primary' }: { value: number; max:
 
 type Review = typeof INIT_REVIEWS[0];
 
-function ReviewDetail({ review, onBack }: { review: Review; onBack: () => void }) {
+// ── Export PRISMA report as .txt download ──────────────────────────────────
+function exportPrisma(review: Review) {
+  const eligibility = Math.round(review.papers.screened * 0.6);
+  const lines = [
+    `RELATÓRIO PRISMA — ${review.title}`,
+    '='.repeat(60),
+    '',
+    `Protocolo: ${review.protocol}`,
+    `Status: ${STATUS_MAP[review.status]?.label ?? review.status}`,
+    `Data: ${review.updatedAt}`,
+    '',
+    'PERGUNTA DE PESQUISA',
+    '-'.repeat(40),
+    review.question,
+    '',
+    'FUNIL PRISMA',
+    '-'.repeat(40),
+    `1. Identificação  : ${review.papers.total} registros encontrados nas bases`,
+    `2. Triagem        : ${review.papers.screened} títulos e resumos avaliados`,
+    `3. Elegibilidade  : ${eligibility} textos completos avaliados`,
+    `4. Inclusão       : ${review.papers.included} estudos incluídos`,
+    '',
+    'MÉTRICAS',
+    '-'.repeat(40),
+    `Triagem concluída : ${review.papers.total > 0 ? Math.round((review.papers.screened / review.papers.total) * 100) : 0}%`,
+    `Taxa de inclusão  : ${review.papers.total > 0 ? Math.round((review.papers.included / review.papers.total) * 100) : 0}%`,
+    `Colaboradores     : ${review.collaborators.length}`,
+    review.collaborators.length > 0 ? `  ${review.collaborators.join(', ')}` : '',
+    '',
+    '—',
+    'Gerado por SCIENTIA AI — scientia-ai.vercel.app',
+  ];
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `PRISMA_${review.title.slice(0, 30).replace(/\s+/g, '_')}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Invite modal ───────────────────────────────────────────────────────────
+function InviteModal({ review, onClose, onInvite }: {
+  review: Review;
+  onClose: () => void;
+  onInvite: (email: string) => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [sent, setSent] = useState(false);
+
+  const send = () => {
+    if (!email.trim() || !email.includes('@')) return;
+    onInvite(email.trim());
+    setSent(true);
+    setTimeout(onClose, 1200);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-border bg-background shadow-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Users className="h-4 w-4 text-primary" />
+            Convidar colaborador
+          </h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Revisão: <span className="text-foreground font-medium">{review.title}</span>
+        </p>
+
+        {review.collaborators.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Colaboradores atuais</p>
+            {review.collaborators.map((c) => (
+              <div key={c} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+                  {c[0].toUpperCase()}
+                </div>
+                {c}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-muted-foreground">E-mail do colaborador</label>
+          <input
+            autoFocus
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && send()}
+            placeholder="pesquisador@exemplo.com"
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary/50"
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <Button size="sm" onClick={send} disabled={!email.trim() || sent} className="gap-1 flex-1">
+            {sent ? (
+              <><Check className="h-3.5 w-3.5" /> Convite enviado!</>
+            ) : (
+              <><Mail className="h-3.5 w-3.5" /> Enviar convite</>
+            )}
+          </Button>
+          <Button size="sm" variant="outline" onClick={onClose}>Cancelar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Review detail ──────────────────────────────────────────────────────────
+function ReviewDetail({ review, onBack, onUpdateReview }: {
+  review: Review;
+  onBack: () => void;
+  onUpdateReview: (updated: Review) => void;
+}) {
+  const [showInvite, setShowInvite] = useState(false);
+  const [exportDone, setExportDone] = useState(false);
+
   const status = STATUS_MAP[review.status];
   const { Icon } = status;
-  const screened_pct = Math.round((review.papers.screened / review.papers.total) * 100);
-  const included_pct = Math.round((review.papers.included / review.papers.total) * 100);
+  const screened_pct = review.papers.total > 0 ? Math.round((review.papers.screened / review.papers.total) * 100) : 0;
+  const included_pct = review.papers.total > 0 ? Math.round((review.papers.included / review.papers.total) * 100) : 0;
 
   const PRISMA_STAGES = [
     { label: 'Identificação', desc: 'Registros encontrados nas bases', count: review.papers.total, color: 'bg-violet-500' },
@@ -74,81 +201,127 @@ function ReviewDetail({ review, onBack }: { review: Review; onBack: () => void }
     { label: 'Inclusão', desc: 'Estudos incluídos', count: review.papers.included, color: 'bg-green-500' },
   ];
 
+  const handleExport = () => {
+    exportPrisma(review);
+    setExportDone(true);
+    setTimeout(() => setExportDone(false), 2000);
+  };
+
+  const handleInvite = (email: string) => {
+    const updated = {
+      ...review,
+      collaborators: [...review.collaborators, email],
+    };
+    onUpdateReview(updated);
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-start gap-3">
-        <button onClick={onBack} className="mt-1 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent">
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <div className="flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge className={`border text-xs ${status.color}`}>
-              <Icon className="mr-1 h-3 w-3" />
-              {status.label}
-            </Badge>
-            <Badge variant="outline" className="text-xs">{review.protocol}</Badge>
+    <>
+      {showInvite && (
+        <InviteModal
+          review={review}
+          onClose={() => setShowInvite(false)}
+          onInvite={handleInvite}
+        />
+      )}
+      <div className="space-y-6">
+        <div className="flex items-start gap-3">
+          <button onClick={onBack} className="mt-1 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent">
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className={`border text-xs ${status.color}`}>
+                <Icon className="mr-1 h-3 w-3" />
+                {status.label}
+              </Badge>
+              <Badge variant="outline" className="text-xs">{review.protocol}</Badge>
+            </div>
+            <h1 className="mt-2 text-xl font-semibold leading-snug">{review.title}</h1>
           </div>
-          <h1 className="mt-2 text-xl font-semibold leading-snug">{review.title}</h1>
         </div>
-      </div>
 
-      <div className="rounded-xl border border-border p-4 space-y-1">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pergunta de pesquisa</p>
-        <p className="text-sm">{review.question}</p>
-      </div>
+        <div className="rounded-xl border border-border p-4 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pergunta de pesquisa</p>
+          <p className="text-sm">{review.question}</p>
+        </div>
 
-      {/* PRISMA funnel */}
-      <div>
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-          <Filter className="h-3.5 w-3.5" />
-          Funil PRISMA
-        </h2>
-        <div className="space-y-2">
-          {PRISMA_STAGES.map((stage, i) => (
-            <div key={i} className="rounded-xl border border-border p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <p className="text-sm font-medium">{stage.label}</p>
-                  <p className="text-xs text-muted-foreground">{stage.desc}</p>
+        {/* PRISMA funnel */}
+        <div>
+          <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5" />
+            Funil PRISMA
+          </h2>
+          <div className="space-y-2">
+            {PRISMA_STAGES.map((stage, i) => (
+              <div key={i} className="rounded-xl border border-border p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="text-sm font-medium">{stage.label}</p>
+                    <p className="text-xs text-muted-foreground">{stage.desc}</p>
+                  </div>
+                  <span className="text-2xl font-bold text-foreground">{stage.count}</span>
                 </div>
-                <span className="text-2xl font-bold text-foreground">{stage.count}</span>
+                <ProgressBar value={stage.count} max={review.papers.total || 1} color={stage.color} />
               </div>
-              <ProgressBar value={stage.count} max={review.papers.total} color={stage.color} />
+            ))}
+          </div>
+        </div>
+
+        {/* Progress summary */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            { label: 'Triagem concluída', value: `${screened_pct}%`, color: 'text-amber-400' },
+            { label: 'Taxa de inclusão', value: `${included_pct}%`, color: 'text-green-400' },
+            { label: 'Colaboradores', value: review.collaborators.length, color: 'text-blue-400' },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl border border-border p-4">
+              <p className="text-xs text-muted-foreground">{s.label}</p>
+              <p className={`mt-1 text-2xl font-semibold ${s.color}`}>{s.value}</p>
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Progress summary */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {[
-          { label: 'Triagem concluída', value: `${screened_pct}%`, color: 'text-amber-400' },
-          { label: 'Taxa de inclusão', value: `${included_pct}%`, color: 'text-green-400' },
-          { label: 'Colaboradores', value: review.collaborators, color: 'text-blue-400' },
-        ].map((s) => (
-          <div key={s.label} className="rounded-xl border border-border p-4">
-            <p className="text-xs text-muted-foreground">{s.label}</p>
-            <p className={`mt-1 text-2xl font-semibold ${s.color}`}>{s.value}</p>
+        {/* Collaborators list */}
+        {review.collaborators.length > 0 && (
+          <div className="rounded-xl border border-border p-4 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Colaboradores</p>
+            {review.collaborators.map((c) => (
+              <div key={c} className="flex items-center gap-2 text-sm">
+                <div className="h-6 w-6 rounded-full bg-blue-500/20 flex items-center justify-center text-xs font-bold text-blue-400">
+                  {c[0].toUpperCase()}
+                </div>
+                {c}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
 
-      <div className="flex gap-2">
-        <Button size="sm" className="gap-1">
-          <FileText className="h-3.5 w-3.5" />
-          Exportar relatório PRISMA
-        </Button>
-        <Button size="sm" variant="outline" className="gap-1">
-          <Users className="h-3.5 w-3.5" />
-          Convidar colaborador
-        </Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button size="sm" onClick={handleExport} className="gap-1" variant={exportDone ? 'default' : 'default'}>
+            {exportDone ? (
+              <><Check className="h-3.5 w-3.5" /> Exportado!</>
+            ) : (
+              <><Download className="h-3.5 w-3.5" /> Exportar relatório PRISMA</>
+            )}
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1" onClick={() => setShowInvite(true)}>
+            <Users className="h-3.5 w-3.5" />
+            Convidar colaborador
+            {review.collaborators.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-xs">{review.collaborators.length}</Badge>
+            )}
+          </Button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
+// ── Main page ──────────────────────────────────────────────────────────────
 export default function ReviewsPage() {
-  const [reviews, setReviews] = useState(INIT_REVIEWS);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const [selected, setSelected] = useState<Review | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -156,22 +329,53 @@ export default function ReviewsPage() {
   const [newProtocol, setNewProtocol] = useState('PRISMA');
   const [saved, setSaved] = useState(false);
 
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        setReviews(JSON.parse(stored) as Review[]);
+      } else {
+        setReviews(INIT_REVIEWS);
+      }
+    } catch {
+      setReviews(INIT_REVIEWS);
+    }
+    setHydrated(true);
+  }, []);
+
+  // Persist whenever reviews change
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(reviews));
+  }, [reviews, hydrated]);
+
+  // Keep selected in sync if reviews update
+  useEffect(() => {
+    if (selected) {
+      const updated = reviews.find((r) => r.id === selected.id);
+      if (updated) setSelected(updated);
+    }
+  }, [reviews]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateReview = (updated: Review) => {
+    setReviews((prev) => prev.map((r) => r.id === updated.id ? updated : r));
+  };
+
   const createReview = () => {
     if (!newTitle.trim()) return;
     const id = Date.now().toString();
-    setReviews((prev) => [
-      {
-        id,
-        title: newTitle.trim(),
-        status: 'triagem',
-        protocol: newProtocol,
-        question: newQuestion.trim() || 'Pergunta de pesquisa a definir',
-        papers: { total: 0, screened: 0, included: 0 },
-        collaborators: 1,
-        updatedAt: new Date().toISOString().split('T')[0],
-      },
-      ...prev,
-    ]);
+    const newReview: Review = {
+      id,
+      title: newTitle.trim(),
+      status: 'triagem',
+      protocol: newProtocol,
+      question: newQuestion.trim() || 'Pergunta de pesquisa a definir',
+      papers: { total: 0, screened: 0, included: 0 },
+      collaborators: [],
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+    setReviews((prev) => [newReview, ...prev]);
     setSaved(true);
     setTimeout(() => {
       setShowNew(false);
@@ -182,10 +386,24 @@ export default function ReviewsPage() {
     }, 900);
   };
 
+  if (!hydrated) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+          Carregando revisões…
+        </div>
+      </AppShell>
+    );
+  }
+
   if (selected) {
     return (
       <AppShell>
-        <ReviewDetail review={selected} onBack={() => setSelected(null)} />
+        <ReviewDetail
+          review={selected}
+          onBack={() => setSelected(null)}
+          onUpdateReview={updateReview}
+        />
       </AppShell>
     );
   }
@@ -280,6 +498,11 @@ export default function ReviewsPage() {
 
         {/* Review list */}
         <div className="space-y-3">
+          {reviews.length === 0 && (
+            <div className="rounded-xl border border-border p-8 text-center text-muted-foreground text-sm">
+              Nenhuma revisão criada ainda. Clique em <strong>Nova revisão</strong> para começar.
+            </div>
+          )}
           {reviews.map((review) => {
             const status = STATUS_MAP[review.status];
             const { Icon } = status;
@@ -311,7 +534,7 @@ export default function ReviewsPage() {
                     <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Users className="h-3 w-3" />
-                        {review.collaborators} colaborador{review.collaborators !== 1 ? 'es' : ''}
+                        {review.collaborators.length} colaborador{review.collaborators.length !== 1 ? 'es' : ''}
                       </span>
                       <span>Atualizado em {review.updatedAt}</span>
                     </div>
