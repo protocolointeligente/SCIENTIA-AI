@@ -90,4 +90,60 @@ export class WorkspacesService {
       include: { user: true, role: true },
     });
   }
+
+  /**
+   * Returns the user's first workspace, or creates a personal org + workspace
+   * if they don't have one yet. Safe to call on every login.
+   */
+  async getOrProvision(userId: string): Promise<{ id: string; name: string; slug: string }> {
+    const existing = await this.prisma.workspace.findFirst({
+      where: { members: { some: { userId } } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true, slug: true },
+    });
+    if (existing) return existing;
+
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true, fullName: true },
+    });
+
+    const base = (user.email.split('@')[0] ?? 'user').toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const suffix = Date.now().toString(36);
+
+    return this.prisma.$transaction(async (tx) => {
+      const org = await tx.organization.create({
+        data: {
+          name: `${user.fullName ?? user.email}`,
+          slug: `${base}-${suffix}`,
+          members: { create: { userId, role: 'ADMIN' } },
+        },
+      });
+
+      const workspace = await tx.workspace.create({
+        data: { organizationId: org.id, name: 'Meu Workspace', slug: 'meu-workspace' },
+      });
+
+      const roles = await Promise.all(
+        DEFAULT_ROLES.map((role) =>
+          tx.workspaceRole.create({
+            data: {
+              workspaceId: workspace.id,
+              name: role.name,
+              baseCode: role.baseCode,
+              permissions: PERMISSION_MATRIX[role.baseCode],
+            },
+          }),
+        ),
+      );
+
+      const ownerRole = roles.find((r) => r.baseCode === 'OWNER')!;
+      await tx.workspaceMember.create({
+        data: { workspaceId: workspace.id, userId, roleId: ownerRole.id },
+      });
+      await tx.creditWallet.create({ data: { workspaceId: workspace.id, balance: 0 } });
+
+      return { id: workspace.id, name: workspace.name, slug: workspace.slug };
+    });
+  }
 }

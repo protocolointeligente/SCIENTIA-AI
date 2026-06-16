@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 import { CurrentWorkspace, WorkspaceContext } from '../../../common/decorators/current-workspace.decorator';
@@ -20,6 +20,11 @@ export class WorkspacesController {
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workspacesService.findById(id, user.id);
+  }
+
+  @Post('provision')
+  provision(@CurrentUser() user: AuthenticatedUser) {
+    return this.workspacesService.getOrProvision(user.id);
   }
 
   @Get(':id/members')

@@ -6,6 +6,7 @@ import { Search as SearchIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ArticleResultCard, ArticleResult } from '@/components/search/article-result-card';
 import { apiFetch } from '@/lib/api';
+import { useActiveWorkspace } from '@/lib/workspace-context';
 
 interface PaperResponse {
   id: string;
@@ -34,12 +35,15 @@ function toArticle(paper: PaperResponse): ArticleResult {
 export function SearchResults() {
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
+  const { workspaceId } = useActiveWorkspace();
 
   const { data, isFetching, error } = useQuery({
-    queryKey: ['search', submittedQuery],
+    queryKey: ['search', submittedQuery, workspaceId],
     queryFn: () =>
-      apiFetch<PaperResponse[]>(`/search/papers?q=${encodeURIComponent(submittedQuery ?? '')}`),
-    enabled: !!submittedQuery,
+      apiFetch<PaperResponse[]>(`/search/papers?q=${encodeURIComponent(submittedQuery ?? '')}`, {
+        workspaceId,
+      }),
+    enabled: !!submittedQuery && !!workspaceId,
   });
 
   return (
@@ -65,9 +69,15 @@ export function SearchResults() {
         </Button>
       </form>
 
+      {!workspaceId && !isFetching && (
+        <p className="text-sm text-muted-foreground">
+          Faça login para utilizar a busca.
+        </p>
+      )}
+
       {error && (
         <p className="text-sm text-destructive">
-          Não foi possível buscar resultados. Verifique se a API está em execução.
+          Não foi possível buscar resultados. Verifique sua conexão e tente novamente.
         </p>
       )}
 

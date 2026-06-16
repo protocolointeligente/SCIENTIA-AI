@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { PERMISSIONS_KEY } from '../decorators/require-permission.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePermissions } from '../permissions/permission-matrix';
 
@@ -31,7 +32,15 @@ export class WorkspaceContextGuard implements CanActivate {
     const workspaceId = request.headers['x-workspace-id'] as string | undefined;
 
     if (!workspaceId) {
-      throw new ForbiddenException('Missing x-workspace-id header');
+      // Only enforce workspace context for routes that declare @RequirePermission
+      const requiredPermissions = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+      if (requiredPermissions && requiredPermissions.length > 0) {
+        throw new ForbiddenException('Missing x-workspace-id header');
+      }
+      return true;
     }
 
     const member = await this.prisma.workspaceMember.findUnique({
