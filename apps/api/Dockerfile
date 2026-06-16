@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
 WORKDIR /app
 
 # ── deps ──────────────────────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ COPY tsconfig.base.json ./
 COPY packages/database ./packages/database
 COPY apps/api ./apps/api
 
-# Generate Prisma client
+# Generate Prisma client (needs openssl — available in node:20-slim via Debian)
 RUN npx prisma generate --schema=packages/database/prisma/schema.prisma
 
 # Build NestJS API
