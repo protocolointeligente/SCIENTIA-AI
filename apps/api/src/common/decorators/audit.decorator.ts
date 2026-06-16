@@ -1,5 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
-import { AuditLogAction } from '@scientia/database';
+import { AuditLogAction } from '@prisma/client';
 
 export const AUDIT_KEY = 'auditAction';
 

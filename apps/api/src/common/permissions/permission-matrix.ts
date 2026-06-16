@@ -1,4 +1,4 @@
-import { WorkspaceRoleType } from '@scientia/database';
+import { WorkspaceRoleType } from '@prisma/client';
 
 /**
  * Canonical list of permissions in the system. Format: "<resource>:<action>".
