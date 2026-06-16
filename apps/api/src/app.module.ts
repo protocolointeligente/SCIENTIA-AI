@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { HealthModule } from './common/health/health.module';
 import { SupabaseAuthGuard } from './common/guards/supabase-auth.guard';
@@ -34,6 +35,20 @@ import { AiModule } from './modules/ai/ai.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+
+    // BullMQ — job queues backed by Upstash Redis (rediss:// = TLS)
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          url: config.get<string>('REDIS_URL'),
+          // maxRetriesPerRequest=null is required by BullMQ
+          maxRetriesPerRequest: null,
+          enableReadyCheck: false,
+        },
+      }),
+    }),
+
     PrismaModule,
     HealthModule,
 
